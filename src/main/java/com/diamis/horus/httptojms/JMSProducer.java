@@ -13,7 +13,6 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.glassfish.grizzly.http.server.HttpServer;
 
-import com.diamis.horus.jmstohttp.JmsListener;
 import com.ibm.mq.jms.MQConnectionFactory;
 import com.sun.jersey.api.container.filter.GZIPContentEncodingFilter;
 import com.sun.jersey.api.container.grizzly2.GrizzlyServerFactory;
@@ -52,6 +51,7 @@ public class JMSProducer {
 		
 	}
 	
+	@SuppressWarnings("unchecked")
 	private void start(int httpPort) throws JMSException, IllegalArgumentException, NullPointerException, IOException {
 		
 		logger.info("Connecting to queue");

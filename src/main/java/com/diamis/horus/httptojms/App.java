@@ -14,7 +14,8 @@ import com.sun.jersey.api.core.DefaultResourceConfig;
  */
 public class App 
 {
-    public static void main( String[] args ) throws IllegalArgumentException, NullPointerException, IOException
+    @SuppressWarnings("unchecked")
+	public static void main( String[] args ) throws IllegalArgumentException, NullPointerException, IOException
     {
         DefaultResourceConfig resourceConfig = new DefaultResourceConfig(HorusHttpEndpoint.class);
         // The following line is to enable GZIP when client accepts it
