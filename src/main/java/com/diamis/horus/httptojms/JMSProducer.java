@@ -24,6 +24,7 @@ public class JMSProducer {
 	static MessageProducer producer = null;
 	static Session session = null;
 	static Connection connect = null;
+	static HttpServer server = null;
 	
 	private static JMSProducer jmsProducer = null;
 	private static Log logger = LogFactory.getLog(JMSProducer.class);
@@ -61,21 +62,35 @@ public class JMSProducer {
 		DefaultResourceConfig resourceConfig = new DefaultResourceConfig(HorusHttpEndpoint.class);
         // The following line is to enable GZIP when client accepts it
         resourceConfig.getContainerResponseFilters().add(new GZIPContentEncodingFilter());
-        HttpServer server = GrizzlyServerFactory.createHttpServer("http://0.0.0.0:"+httpPort , resourceConfig);
+        server = GrizzlyServerFactory.createHttpServer("http://0.0.0.0:"+httpPort , resourceConfig);
 		
-        try {
-            System.out.println("Press any key to stop the service...");
-            System.in.read();
-        } finally {
-            server.stop();
-        }
-
-		connect.stop();
+        while(true) {try {
+			Thread.sleep(100);
+		} catch (InterruptedException e) {
+			server.stop();
+			connect.stop();
+		}}
+        
+        
 		
 	}
 
 
 	public static void main(String[] args) throws JMSException, IllegalArgumentException, NullPointerException, IOException {
+		
+		Runtime.getRuntime().addShutdownHook(new Thread() {
+	        @Override
+	            public void run() {
+	                logger.fatal("Received Sigterm... Cleaning up.");
+	                server.stop();
+	                try {
+						connect.stop();
+					} catch (JMSException e) {
+						// TODO Auto-generated catch block
+						logger.error(e.getMessage());
+					}
+	            }   
+	        }); 
 		
 		if (args.length != 6) {
 			System.out.println("Program takes six arguments, " + args.length + " supplied : <host> <port> <qmgr> <channel> <write_queue> <http_port>");
