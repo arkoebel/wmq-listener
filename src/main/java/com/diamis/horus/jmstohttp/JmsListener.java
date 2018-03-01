@@ -6,6 +6,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
+import java.net.ProtocolException;
 import java.net.URL;
 
 import javax.jms.Connection;
@@ -23,7 +24,7 @@ import org.apache.commons.logging.LogFactory;
 import com.ibm.mq.jms.MQConnectionFactory;
 
 public class JmsListener {
-	
+
 	private static String PROXY_MODE = "proxy";
 	private static String ROUTER_MODE = "router";
 
@@ -34,7 +35,7 @@ public class JmsListener {
 	private String proxyUrl = null;
 	private String destinationMimeType = null;
 	private String proxyMode = null;
-	
+
 	private Destination queue = null;
 	private MessageConsumer consumer = null;
 	private Session session = null;
@@ -44,16 +45,16 @@ public class JmsListener {
 		this.proxyUrl = proxyUrl;
 		this.destinationMimeType = destinationMimeType;
 		this.proxyMode = proxyMode;
-		
+
 		if (!proxyMode.equals(JmsListener.PROXY_MODE)&&!proxyMode.equals(JmsListener.ROUTER_MODE))
 			throw new IllegalArgumentException("Error: proxyMode MUST be either proxy or router.");
-		
+
 		logger.info("Sending to "+destinationUrl+" via "+proxyUrl+" ("+proxyMode+" mode) as "+destinationMimeType);
 
 		logger.info("Defining listener for Queue jms://"+jmsHost+":"+jmsPort+"/"+jmsQmgr+"/"+jmsQueue);
 		logger.info("Sending messages to "+ proxyUrl);
 		logger.info("Responses to be forwarded to "+destinationUrl);
-		
+
 		MQConnectionFactory factory = new MQConnectionFactory();
 		factory.setHostName(jmsHost);
 		factory.setPort(jmsPort);
@@ -65,7 +66,7 @@ public class JmsListener {
 		connect.start();
 		session = connect.createSession(false, Session.AUTO_ACKNOWLEDGE);
 		queue = (Destination) session.createQueue(jmsQueue);
-		
+
 
 	}
 
@@ -73,10 +74,10 @@ public class JmsListener {
 		return (json.startsWith("{")&&json.endsWith("}"));
 	}
 
-	private void start() throws Exception {
+	private void start() throws JMSException, MalformedURLException {
 		logger.info("Creating Consumer");
 		consumer = this.session.createConsumer(queue);
-		
+
 		TextMessage message = null;
 		while (true) {
 			Message m = consumer.receive(1);
@@ -90,54 +91,64 @@ public class JmsListener {
 					try {
 						proxyCall = new URL(proxyUrl);
 					} catch (MalformedURLException e) {
-						throw new Exception("ProxyUrl invalid : " + proxyUrl);
+						throw new MalformedURLException("ProxyUrl invalid : " + proxyUrl);
 					}
 
 					logger.debug("Message is : "+message.getText());
 					logger.debug("Sending request to proxy.");
-					HttpURLConnection conn = (HttpURLConnection) proxyCall.openConnection();
-					conn.setDoOutput(true);
-					conn.setRequestMethod("POST");
-					if (this.proxyMode.equals(PROXY_MODE))
-						conn.setRequestProperty("x_destination_url", destinationUrl);
-					else
-						conn.setRequestProperty("x_sender_id", destinationUrl);
+					HttpURLConnection conn;
+					try {
+						conn = (HttpURLConnection) proxyCall.openConnection();
 
-					conn.setRequestProperty("Content-Type", testJson(message.getText())?"application/json":"application/xml");
-					conn.setRequestProperty("Accept",this.destinationMimeType);
-
-					OutputStream os = conn.getOutputStream();
-					os.write(message.getText().getBytes());
-					os.flush();
-
-					if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
-						BufferedReader bb = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
-						StringBuffer myoutput = new StringBuffer();
-						String output;
+						conn.setDoOutput(true);
 						try {
-							while ((output = bb.readLine()) != null) {
-								myoutput.append(output).append("\n");
-							}
-						} catch (IOException e1) {
-							// Shouldn't happen.
+							conn.setRequestMethod("POST");
+						} catch (ProtocolException e) {
+							//Nothing
 						}
-						String contenttype = conn.getHeaderField("Content-type");
-						throw new Exception("Failed to get URL response : HTTP error code = " + conn.getResponseCode() + "Return Content-type: " + contenttype + "Body : " + myoutput.toString());
-					}else{
-						BufferedReader br = new BufferedReader(new InputStreamReader((conn.getInputStream())));
+						if (this.proxyMode.equals(PROXY_MODE))
+							conn.setRequestProperty("x_destination_url", destinationUrl);
+						else
+							conn.setRequestProperty("x_sender_id", destinationUrl);
 
-						String output;
-						StringBuffer sb = new StringBuffer();
-						try {
-							while ((output = br.readLine()) != null) {
-								sb.append(output).append("\n");
+						conn.setRequestProperty("Content-Type", testJson(message.getText())?"application/json":"application/xml");
+						conn.setRequestProperty("Accept",this.destinationMimeType);
+
+						OutputStream os = conn.getOutputStream();
+						os.write(message.getText().getBytes());
+						os.flush();
+
+						if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
+							BufferedReader bb = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+							StringBuffer myoutput = new StringBuffer();
+							String output;
+							try {
+								while ((output = bb.readLine()) != null) {
+									myoutput.append(output).append("\n");
+								}
+							} catch (IOException e1) {
+								// Shouldn't happen.
 							}
-						} catch (IOException e1) {
-							// Shouldn't happen.
-						}
-						String oOut = sb.toString();
-						logger.info("Received response : " + oOut);
+							String contenttype = conn.getHeaderField("Content-type");
+							logger.error("Failed to get URL response : HTTP error code = " + conn.getResponseCode() + "Return Content-type: " + contenttype + "Body : " + myoutput.toString());
+						}else{
+							BufferedReader br = new BufferedReader(new InputStreamReader((conn.getInputStream())));
 
+							String output;
+							StringBuffer sb = new StringBuffer();
+							try {
+								while ((output = br.readLine()) != null) {
+									sb.append(output).append("\n");
+								}
+							} catch (IOException e1) {
+								// Shouldn't happen.
+							}
+							String oOut = sb.toString();
+							logger.info("Received response : " + oOut);
+
+						}
+					} catch (IOException e2) {
+						logger.error("Unable to contact destination URL" + e2.getMessage());;
 					}
 
 				} else {
