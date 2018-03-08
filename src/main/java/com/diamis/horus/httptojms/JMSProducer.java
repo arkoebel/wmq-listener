@@ -21,22 +21,42 @@ import com.sun.jersey.api.core.DefaultResourceConfig;
 
 public class JMSProducer {
 	
-	static MessageProducer producer = null;
-	static Session session = null;
-	static Connection connect = null;
+	//static MessageProducer producer = null;
+	//static Session session = null;
+	//static Connection connect = null;
 	static HttpServer server = null;
+	static MQConnectionFactory factory = null;
+	static String jmsQueue = null;
 	
 	private static JMSProducer jmsProducer = null;
 	private static Log logger = LogFactory.getLog(JMSProducer.class);
 	
 	static void sendMessage(String message) throws JMSException {
-		logger.debug("Received message "+message);
-		TextMessage msg = session.createTextMessage(message);
-		producer.send(msg);
+		logger.debug("Writing message to " + jmsQueue + " : "+message + "\n");
+		try {
+			Connection connect = factory.createConnection(null,null);
+			Session session = connect.createSession(false, Session.AUTO_ACKNOWLEDGE);
+			Destination queue = (Destination) session.createQueue(jmsQueue);
+			MessageProducer producer = session.createProducer(queue);
+			connect.start();	
+		    TextMessage msg = session.createTextMessage(message);
+		    producer.send(msg);
+		    msg= null;
+			connect.stop();
+			producer.close();
+			session.close();
+			connect.close();
+		}catch(JMSException e) {
+			logger.error("JMS Error " + e.getMessage());
+			logger.error("Linked Exception : " + e.getLinkedException().getMessage());
+			throw e;
+		}finally {
+
+		}
 	}
 	
 	private JMSProducer(String jmsHost, int jmsPort, String jmsQmgr, String jmsChannel, String jmsQueue) throws JMSException {
-		MQConnectionFactory factory = new MQConnectionFactory();
+		factory = new MQConnectionFactory();
 		factory.setHostName(jmsHost);
 		factory.setPort(jmsPort);
 		factory.setQueueManager(jmsQmgr);
@@ -44,11 +64,13 @@ public class JMSProducer {
 		factory.setTransportType(1);
 		
 		logger.info("Starting Horus MQ Connect to queue //"+jmsHost+":"+jmsPort+"/"+jmsQmgr+"/"+jmsQueue);
-		connect = factory.createConnection("","");
-		session = connect.createSession(false, Session.AUTO_ACKNOWLEDGE);
-		Destination queue = (Destination) session.createQueue(jmsQueue);
-		producer = session.createProducer(queue);
-		connect.start();		
+		//connect = factory.createConnection(null,null);
+		//session = connect.createSession(false, Session.AUTO_ACKNOWLEDGE);
+		//Destination queue = (Destination) session.createQueue(jmsQueue);
+		//producer = session.createProducer(queue);
+		//connect.start();		
+		
+		this.jmsQueue = jmsQueue;
 		
 	}
 	
@@ -56,7 +78,7 @@ public class JMSProducer {
 	private void start(int httpPort) throws JMSException, IllegalArgumentException, NullPointerException, IOException {
 		
 		logger.info("Connecting to queue");
-		connect.start();
+		//connect.start();
 		
 		logger.info("Spawning HTTP Server");
 		DefaultResourceConfig resourceConfig = new DefaultResourceConfig(HorusHttpEndpoint.class);
@@ -68,7 +90,7 @@ public class JMSProducer {
 			Thread.sleep(100);
 		} catch (InterruptedException e) {
 			server.stop();
-			connect.stop();
+			//connect.stop();
 		}}
         
         
@@ -83,12 +105,12 @@ public class JMSProducer {
 	            public void run() {
 	                logger.fatal("Received Sigterm... Cleaning up.");
 	                server.stop();
-	                try {
-						connect.stop();
-					} catch (JMSException e) {
+	                //try {
+						//connect.stop();
+					//} catch (JMSException e) {
 						// TODO Auto-generated catch block
-						logger.error(e.getMessage());
-					}
+					//	logger.error(e.getMessage());
+					//}
 	            }   
 	        }); 
 		

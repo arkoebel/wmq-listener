@@ -23,12 +23,16 @@ public class HorusHttpEndpoint {
 	    @Consumes("application/xml")
 	    @Produces("application/json")
 	    public String setMessage(String body){
-	    	logger.debug("Message : " + body);
+	    	logger.debug("Message XML : " + body);
+	    	long start=0;
+	    	long stop=0;
 	        try {
+	        	start = System.nanoTime();
 				JMSProducer.sendMessage(body);
-				return "{\"status\": \"OK\"}";
+				stop = System.nanoTime();
+				return "{\"status\": \"OK\",\"time\":\""+((stop-start)/1000000)+"\"}";
 			} catch (JMSException e) {
-				return "{\"status\": \"KO\", \"message\": \""+ e.getMessage().replaceAll("\"", "\\\"") + "\"}";
+				return "{\"status\": \"KO\",\"time\":\""+((stop-start)/1000000)+",\"message\": \""+ e.getMessage().replaceAll("\"", "\\\"") + "\"}";
 			}
 	    	 
 	    }
@@ -42,12 +46,15 @@ public class HorusHttpEndpoint {
 	    	JsonElement elt = json.parse(body.trim());
 	    	JsonObject obj = elt.getAsJsonObject();
 	    	String bodyxml = obj.get("payload").getAsString();
+	    	long start=0;
+	    	long stop=0;
 	        try {
-	        	
+	        	start = System.nanoTime();
 				JMSProducer.sendMessage(bodyxml);
-				return "{\"status\": \"OK\"}";
+				stop = System.nanoTime();
+				return "{\"status\": \"OK\",\"time\":\""+((stop-start)/1000000)+"\"}";
 			} catch (JMSException e) {
-				return "{\"status\": \"KO\", \"message\": \""+ e.getMessage().replaceAll("\"", "\\\"") + "\"}";
+				return "{\"status\": \"KO\",\"time\":\""+((stop-start)/1000000)+",\"message\": \""+ e.getMessage().replaceAll("\"", "\\\"") + "\"}";
 			}
 	    	 
 	    }
