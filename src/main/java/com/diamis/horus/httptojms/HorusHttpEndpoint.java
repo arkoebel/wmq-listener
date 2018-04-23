@@ -23,7 +23,7 @@ public class HorusHttpEndpoint {
 	    @Consumes("application/xml")
 	    @Produces("application/json")
 	    public String setMessage(String body){
-	    	logger.debug("Message XML : " + body);
+	    	logger.info("Message XML : " + body);
 	    	long start=0;
 	    	long stop=0;
 	        try {
@@ -45,7 +45,13 @@ public class HorusHttpEndpoint {
 	    	logger.info("Message JSON : " + body);
 	    	JsonElement elt = json.parse(body.trim());
 	    	JsonObject obj = elt.getAsJsonObject();
-	    	String bodyxml = obj.get("payload").getAsString();
+	    	String bodyxml;
+	    	if (obj.get("payload")==null) {
+	    		bodyxml = body;
+	    	}else {
+	    		bodyxml = obj.get("payload").getAsString();
+	    	}
+	    	logger.info("Decoded JSON Message : " + bodyxml);
 	    	long start=0;
 	    	long stop=0;
 	        try {
@@ -54,7 +60,27 @@ public class HorusHttpEndpoint {
 				stop = System.nanoTime();
 				return "{\"status\": \"OK\",\"time\":\""+((stop-start)/1000000)+"\"}";
 			} catch (JMSException e) {
-				return "{\"status\": \"KO\",\"time\":\""+((stop-start)/1000000)+",\"message\": \""+ e.getMessage().replaceAll("\"", "\\\"") + "\"}";
+				stop = System.nanoTime();
+				return "{\"status\": \"KO\",\"time\":\""+((stop-start)/1000000)+"\",\"message\": \""+ e.getMessage().replaceAll("\"", "\\\"") + "\"}";
+			}
+	    	 
+	    }
+	    
+	    @POST
+	    @Consumes("text/plain")
+	    @Produces("application/json")
+	    public String setMessageText(String body){
+	    	logger.info("Message Text : " + body);
+	    	long start=0;
+	    	long stop=0;
+	        try {
+	        	start = System.nanoTime();
+				JMSProducer.sendMessage(body);
+				stop = System.nanoTime();
+				return "{\"status\": \"OK\",\"time\":\""+((stop-start)/1000000)+"\"}";
+			} catch (JMSException e) {
+				stop = System.nanoTime();
+				return "{\"status\": \"KO\",\"time\":\""+((stop-start)/1000000)+"\",\"message\": \""+ e.getMessage().replaceAll("\"", "\\\"") + "\"}";
 			}
 	    	 
 	    }
