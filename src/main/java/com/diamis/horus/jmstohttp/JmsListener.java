@@ -79,8 +79,19 @@ public class JmsListener {
 		consumer = this.session.createConsumer(queue);
 
 		TextMessage message = null;
+		Message m = null;
 		while (true) {
-			Message m = consumer.receive(1);
+			try {
+				m = consumer.receive(1);
+			}catch(JMSException e) {
+				logger.info("JMS Error : " + e.getMessage());
+				try {
+					Thread.sleep(5000);
+				} catch (InterruptedException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+			}
 
 			if (m != null) {
 				if (m instanceof TextMessage) {
