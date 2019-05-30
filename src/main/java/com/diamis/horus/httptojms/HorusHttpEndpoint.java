@@ -10,6 +10,8 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.core.Response;
 import javax.annotation.security.PermitAll;
 
+import org.apache.commons.lang3.StringEscapeUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.log4j.Logger;
 
 import com.google.gson.JsonElement;
@@ -82,11 +84,13 @@ public class HorusHttpEndpoint {
 	    public String setMessageText(String body){
 	    	logger.info("Got Text Message");
 	    	logger.debug("Incoming Text Message : " + body);
+	    	String newbody = StringUtils.replace(body, "\\0d\\0a", "\r\n",-1);
+	    	logger.debug("String with control chars : " + StringEscapeUtils.escapeJava(newbody));
 	    	long start=0;
 	    	long stop=0;
 	        try {
 	        	start = System.nanoTime();
-				JMSProducer.sendMessage(body);
+				JMSProducer.sendMessage(newbody);
 				stop = System.nanoTime();
 				logger.info("Return OK in " + ((stop-start)/1000000));
 				return "{\"status\": \"OK\",\"time\":\""+((stop-start)/1000000)+"\"}";
