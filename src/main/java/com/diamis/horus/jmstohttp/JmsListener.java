@@ -18,8 +18,7 @@ import javax.jms.MessageConsumer;
 import javax.jms.Session;
 import javax.jms.TextMessage;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.log4j.Logger;
 
 import com.ibm.mq.jms.MQConnectionFactory;
 
@@ -29,22 +28,26 @@ public class JmsListener {
 	private static String ROUTER_MODE = "router";
 
 	private static JmsListener listener;
-	private static Log logger = LogFactory.getLog(JmsListener.class);
+	private static Logger logger = Logger.getLogger(JmsListener.class);
 
 	private String destinationUrl = null;
 	private String proxyUrl = null;
 	private String destinationMimeType = null;
 	private String proxyMode = null;
+	private String jmsQueue = null;
 
 	private Destination queue = null;
 	private MessageConsumer consumer = null;
 	private Session session = null;
+	private MQConnectionFactory factory = null;
+	private Connection connect = null;
 
 	private JmsListener(String jmsHost, int jmsPort, String jmsQmgr, String jmsChannel, String jmsQueue, String proxyMode, String proxyUrl, String destinationUrl, String destinationMimeType) throws JMSException {
 		this.destinationUrl = destinationUrl;
 		this.proxyUrl = proxyUrl;
 		this.destinationMimeType = destinationMimeType;
 		this.proxyMode = proxyMode;
+		this.jmsQueue = jmsQueue;
 
 		if (!proxyMode.equals(JmsListener.PROXY_MODE)&&!proxyMode.equals(JmsListener.ROUTER_MODE))
 			throw new IllegalArgumentException("Error: proxyMode MUST be either proxy or router.");
@@ -55,17 +58,17 @@ public class JmsListener {
 		logger.info("Sending messages to "+ proxyUrl);
 		logger.info("Responses to be forwarded to "+destinationUrl);
 
-		MQConnectionFactory factory = new MQConnectionFactory();
+		factory = new MQConnectionFactory();
 		factory.setHostName(jmsHost);
 		factory.setPort(jmsPort);
 		factory.setQueueManager(jmsQmgr);
 		factory.setChannel(jmsChannel);
 		factory.setTransportType(1);
 
-		Connection connect = factory.createConnection("","");
+		connect = factory.createConnection("","");
 		connect.start();
 		session = connect.createSession(false, Session.AUTO_ACKNOWLEDGE);
-		queue = (Destination) session.createQueue(jmsQueue);
+		queue = (Destination) session.createQueue(this.jmsQueue);
 
 
 	}
@@ -76,6 +79,7 @@ public class JmsListener {
 
 	private void start() throws JMSException, MalformedURLException {
 		logger.info("Creating Consumer");
+		
 		consumer = this.session.createConsumer(queue);
 
 		TextMessage message = null;
@@ -91,6 +95,16 @@ public class JmsListener {
 					// TODO Auto-generated catch block
 					e1.printStackTrace();
 				}
+				
+			    try {
+			    	connect.start();
+			    	session = connect.createSession(false, Session.AUTO_ACKNOWLEDGE);
+			    	queue = (Destination) session.createQueue(jmsQueue);
+			    	consumer = this.session.createConsumer(queue);
+			    	logger.info("Reconnection successful");
+			    }catch(JMSException e2) {
+			    	logger.info("Failed to reconnect. Retrying...");
+			    }
 			}
 
 			if (m != null) {

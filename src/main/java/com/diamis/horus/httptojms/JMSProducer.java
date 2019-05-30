@@ -9,8 +9,7 @@ import javax.jms.MessageProducer;
 import javax.jms.Session;
 import javax.jms.TextMessage;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import org.apache.log4j.Logger;
 import org.glassfish.grizzly.http.server.HttpServer;
 
 import com.ibm.mq.jms.MQConnectionFactory;
@@ -29,7 +28,7 @@ public class JMSProducer {
 	static String jmsQueue = null;
 	
 	private static JMSProducer jmsProducer = null;
-	private static Log logger = LogFactory.getLog(JMSProducer.class);
+	private static Logger logger = Logger.getLogger(JMSProducer.class);
 	
 	static void sendMessage(String message) throws JMSException {
 		logger.debug("Writing message to " + jmsQueue + " : "+message + "\n");
