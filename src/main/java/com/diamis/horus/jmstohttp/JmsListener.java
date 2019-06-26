@@ -8,6 +8,13 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.ProtocolException;
 import java.net.URL;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Map;
+import java.util.TimeZone;
+import java.util.UUID;
+import java.util.Date;
+import java.util.HashMap;
 
 import javax.jms.Connection;
 import javax.jms.Destination;
@@ -19,8 +26,14 @@ import javax.jms.Session;
 import javax.jms.TextMessage;
 
 import org.apache.log4j.Logger;
+import org.apache.log4j.Level;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.ibm.mq.jms.MQConnectionFactory;
+
+import com.diamis.horus.HorusException;
+import com.diamis.horus.HorusUtils;
 
 public class JmsListener {
 
@@ -28,7 +41,6 @@ public class JmsListener {
 	private static String ROUTER_MODE = "router";
 
 	private static JmsListener listener;
-	private static Logger logger = Logger.getLogger(JmsListener.class);
 
 	private String destinationUrl = null;
 	private String proxyUrl = null;
@@ -42,45 +54,64 @@ public class JmsListener {
 	private MQConnectionFactory factory = null;
 	private Connection connect = null;
 
-	private JmsListener(String jmsHost, int jmsPort, String jmsQmgr, String jmsChannel, String jmsQueue, String proxyMode, String proxyUrl, String destinationUrl, String destinationMimeType) throws JMSException {
+	JmsListener(String jmsHost, int jmsPort, String jmsQmgr, String jmsChannel, String jmsQueue, String proxyMode, String proxyUrl, String destinationUrl, String destinationMimeType) throws HorusException {
 		this.destinationUrl = destinationUrl;
 		this.proxyUrl = proxyUrl;
 		this.destinationMimeType = destinationMimeType;
 		this.proxyMode = proxyMode;
 		this.jmsQueue = jmsQueue;
 
-		if (!proxyMode.equals(JmsListener.PROXY_MODE)&&!proxyMode.equals(JmsListener.ROUTER_MODE))
+		if (!proxyMode.equals(JmsListener.PROXY_MODE)&&!proxyMode.equals(JmsListener.ROUTER_MODE)){
+			HorusUtils.logJson("FATAL",null,jmsQueue,"Error: proxyMode MUST be either proxy or router.");
 			throw new IllegalArgumentException("Error: proxyMode MUST be either proxy or router.");
+		}
+		HorusUtils.logJson("INFO",null, jmsQueue,"Sending to "+destinationUrl+" via "+proxyUrl+" ("+proxyMode+" mode) as "+destinationMimeType);
 
-		logger.info("Sending to "+destinationUrl+" via "+proxyUrl+" ("+proxyMode+" mode) as "+destinationMimeType);
+		HorusUtils.logJson("INFO",null,jmsQueue,"Defining listener for Queue jms://"+jmsHost+":"+jmsPort+"/"+jmsQmgr+"/"+jmsQueue);
+		HorusUtils.logJson("INFO",null,jmsQueue,"Sending messages to "+ proxyUrl);
+		HorusUtils.logJson("INFO",null,jmsQueue,"Responses to be forwarded to "+destinationUrl);
 
-		logger.info("Defining listener for Queue jms://"+jmsHost+":"+jmsPort+"/"+jmsQmgr+"/"+jmsQueue);
-		logger.info("Sending messages to "+ proxyUrl);
-		logger.info("Responses to be forwarded to "+destinationUrl);
+		try{
+			factory = new MQConnectionFactory();
+			factory.setHostName(jmsHost);
+			factory.setPort(jmsPort);
+			factory.setQueueManager(jmsQmgr);
+			factory.setChannel(jmsChannel);
+			factory.setTransportType(1);
 
-		factory = new MQConnectionFactory();
-		factory.setHostName(jmsHost);
-		factory.setPort(jmsPort);
-		factory.setQueueManager(jmsQmgr);
-		factory.setChannel(jmsChannel);
-		factory.setTransportType(1);
-
-		connect = factory.createConnection("","");
-		connect.start();
-		session = connect.createSession(false, Session.AUTO_ACKNOWLEDGE);
-		queue = (Destination) session.createQueue(this.jmsQueue);
+			connect = factory.createConnection("","");
+			connect.start();
+			session = connect.createSession(false, Session.AUTO_ACKNOWLEDGE);
+			queue = (Destination) session.createQueue(this.jmsQueue);
+		}catch(JMSException e){
+			HorusUtils.logJson("FATAL",null,jmsQueue,"JMS Error: " + e.getMessage());
+			throw new HorusException("Unable to start JMS Connection",e);
+		}
 
 
 	}
 
 	private boolean testJson(String json) {
-		return (json.startsWith("{")&&json.endsWith("}"));
+		Gson gson = new Gson();
+        try {
+            gson.fromJson(json, Object.class);
+            return true;
+        } catch (com.google.gson.JsonSyntaxException ex) {
+            return false;
+        }
+		//return (json.startsWith("{")&&json.endsWith("}"));
 	}
 
-	private void start() throws JMSException, MalformedURLException {
-		logger.info("Creating Consumer");
+
+	private void start() throws HorusException {
+		HorusUtils.logJson("INFO",null,this.jmsQueue,"Creating Consumer");
 		
-		consumer = this.session.createConsumer(queue);
+		try {
+			consumer = this.session.createConsumer(queue);
+		} catch (JMSException e3) {
+			HorusUtils.logJson("FATAL",null,this.jmsQueue,"Unable to create consumer: " + e3.getMessage());
+			throw new HorusException("Unable to create consumer",e3);
+		}
 
 		TextMessage message = null;
 		Message m = null;
@@ -88,11 +119,11 @@ public class JmsListener {
 			try {
 				m = consumer.receive(1);
 			}catch(JMSException e) {
-				logger.info("JMS Error : " + e.getMessage());
+				HorusUtils.logJson("INFO",null,this.jmsQueue,"JMS Error : " + e.getMessage() + " retrying in 5s");
 				try {
 					Thread.sleep(5000);
 				} catch (InterruptedException e1) {
-					// TODO Auto-generated catch block
+					HorusUtils.logJson("INFO",null,this.jmsQueue,"Sleep interrupted " + e1.getMessage());
 					e1.printStackTrace();
 				}
 				
@@ -101,26 +132,36 @@ public class JmsListener {
 			    	session = connect.createSession(false, Session.AUTO_ACKNOWLEDGE);
 			    	queue = (Destination) session.createQueue(jmsQueue);
 			    	consumer = this.session.createConsumer(queue);
-			    	logger.info("Reconnection successful");
+			    	HorusUtils.logJson("INFO",null,this.jmsQueue,"Reconnection successful");
 			    }catch(JMSException e2) {
-			    	logger.info("Failed to reconnect. Retrying...");
+			    	HorusUtils.logJson("INFO",null,this.jmsQueue,"Failed to reconnect. Retrying...");
 			    }
 			}
 
 			if (m != null) {
 				if (m instanceof TextMessage) {
 					message = (TextMessage) m;
-
-					logger.debug("Receiving JMS Message");
+					String business_id = UUID.randomUUID().toString();
+					HorusUtils.logJson("DEBUG",business_id,this.jmsQueue,"Receiving JMS Message");
 					URL proxyCall;
 					try {
 						proxyCall = new URL(proxyUrl);
 					} catch (MalformedURLException e) {
-						throw new MalformedURLException("ProxyUrl invalid : " + proxyUrl);
+						HorusUtils.logJson("FATAL",null,this.jmsQueue,"ProxyURL is invalid: " + proxyUrl);
+						throw new HorusException("ProxyUrl invalid : " + proxyUrl,e);
 					}
+					String msg;
 
-					logger.debug("Message is : "+message.getText());
-					logger.debug("Sending request to proxy.");
+					try {
+						msg = message.getText();
+					}
+					catch(JMSException e){
+						HorusUtils.logJson("ERROR",business_id,this.jmsQueue,"Unable to read message: " + e.getMessage());
+						throw new HorusException("Unable to read message",e);
+					}
+					
+					HorusUtils.logJson("DEBUG",business_id,this.jmsQueue,"Message is : "+msg);
+					HorusUtils.logJson("DEBUG",business_id,this.jmsQueue,"Sending request to proxy.");
 					HttpURLConnection conn;
 					try {
 						conn = (HttpURLConnection) proxyCall.openConnection();
@@ -131,16 +172,17 @@ public class JmsListener {
 						} catch (ProtocolException e) {
 							//Nothing
 						}
+						conn.setRequestProperty("X-Business-Id",business_id);
 						if (this.proxyMode.equals(PROXY_MODE))
 							conn.setRequestProperty("x_destination_url", destinationUrl);
 						else
 							conn.setRequestProperty("x_sender_id", destinationUrl);
 
-						conn.setRequestProperty("Content-Type", testJson(message.getText())?"application/json":"application/xml");
+						conn.setRequestProperty("Content-Type", testJson(msg)?"application/json":"application/xml");
 						conn.setRequestProperty("Accept",this.destinationMimeType);
 
 						OutputStream os = conn.getOutputStream();
-						os.write(message.getText().getBytes());
+						os.write(msg.getBytes());
 						os.flush();
 
 						if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
@@ -155,7 +197,7 @@ public class JmsListener {
 								// Shouldn't happen.
 							}
 							String contenttype = conn.getHeaderField("Content-type");
-							logger.error("Failed to get URL response : HTTP error code = " + conn.getResponseCode() + "Return Content-type: " + contenttype + "Body : " + myoutput.toString());
+							HorusUtils.logJson("ERROR",business_id,this.jmsQueue,"Failed to get URL response : HTTP error code = " + conn.getResponseCode() + "Return Content-type: " + contenttype + "Body : " + myoutput.toString());
 						}else{
 							BufferedReader br = new BufferedReader(new InputStreamReader((conn.getInputStream())));
 
@@ -169,15 +211,15 @@ public class JmsListener {
 								// Shouldn't happen.
 							}
 							String oOut = sb.toString();
-							logger.info("Received response : " + oOut);
+							HorusUtils.logJson("DEBUG",business_id,this.jmsQueue,"Received response : " + oOut);
 
 						}
 					} catch (IOException e2) {
-						logger.error("Unable to contact destination URL" + e2.getMessage());;
+						HorusUtils.logJson("ERROR",business_id,this.jmsQueue,"Unable to contact destination URL" + e2.getMessage());;
 					}
 
 				} else {
-					System.out.println("Exiting.");
+					HorusUtils.logJson("ERROR",null,this.jmsQueue,"Exiting.");
 					break;
 				}
 			}
@@ -187,7 +229,7 @@ public class JmsListener {
 	public static void main(String[] args) throws Exception {
 
 		if (args.length != 9) {
-			System.out.println("Program takes nine arguments, " + args.length + " supplied : <host> <port> <qmgr> <channel> <read_queue> <proxy_mode: proxy/router> <proxy_url> <destination_url> <destination_mime_type>");
+			HorusUtils.logJson("FATAL",null,null,"Program takes nine arguments, " + args.length + " supplied : <host> <port> <qmgr> <channel> <read_queue> <proxy_mode: proxy/router> <proxy_url> <destination_url> <destination_mime_type>");
 			System.exit(1);
 		}
 

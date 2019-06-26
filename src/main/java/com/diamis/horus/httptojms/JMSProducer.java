@@ -17,6 +17,9 @@ import com.sun.jersey.api.container.filter.GZIPContentEncodingFilter;
 import com.sun.jersey.api.container.grizzly2.GrizzlyServerFactory;
 import com.sun.jersey.api.core.DefaultResourceConfig;
 
+import com.diamis.horus.HorusUtils;
+import com.diamis.horus.HorusException;
+
 
 public class JMSProducer {
 	
@@ -28,10 +31,9 @@ public class JMSProducer {
 	static String jmsQueue = null;
 	
 	private static JMSProducer jmsProducer = null;
-	private static Logger logger = Logger.getLogger(JMSProducer.class);
 	
-	static void sendMessage(String message) throws JMSException {
-		logger.debug("Writing message to " + jmsQueue + " : "+message + "\n");
+	static void sendMessage(String message,String business_id) throws HorusException {
+		HorusUtils.logJson("DEBUG",business_id,jmsQueue,"Writing message to " + jmsQueue + " : "+message + "\n");
 		try {
 			Connection connect = factory.createConnection(null,null);
 			Session session = connect.createSession(false, Session.AUTO_ACKNOWLEDGE);
@@ -46,45 +48,51 @@ public class JMSProducer {
 			session.close();
 			connect.close();
 		}catch(JMSException e) {
-			logger.error("JMS Error " + e.getMessage());
-			logger.error("Linked Exception : " + e.getLinkedException().getMessage());
-			throw e;
+			HorusUtils.logJson("ERROR",business_id,jmsQueue,"JMS Error while sending message to queue: " + e.getMessage());
+			HorusUtils.logJson("INFO",business_id,jmsQueue,"Linked Exception: " + e.getLinkedException().getMessage());
+			throw new HorusException("JMS Error while sending message to queue",e);
 		}finally {
 
 		}
 	}
 	
-	private JMSProducer(String jmsHost, int jmsPort, String jmsQmgr, String jmsChannel, String jmsQueue) throws JMSException {
+	private JMSProducer(String jmsHost, int jmsPort, String jmsQmgr, String jmsChannel, String jmsQueue) throws HorusException {
 		factory = new MQConnectionFactory();
+		try {
 		factory.setHostName(jmsHost);
 		factory.setPort(jmsPort);
 		factory.setQueueManager(jmsQmgr);
 		factory.setChannel(jmsChannel);
 		factory.setTransportType(1);
+		}catch(JMSException e){
+			HorusUtils.logJson("ERROR", null, jmsQueue, "Error while connecting to QM: " + e.getMessage());
+			throw new HorusException("Error while connecting to QM",e);
+		}
 		
-		logger.info("Starting Horus MQ Connect to queue //"+jmsHost+":"+jmsPort+"/"+jmsQmgr+"/"+jmsQueue);
-		//connect = factory.createConnection(null,null);
-		//session = connect.createSession(false, Session.AUTO_ACKNOWLEDGE);
-		//Destination queue = (Destination) session.createQueue(jmsQueue);
-		//producer = session.createProducer(queue);
-		//connect.start();		
+		HorusUtils.logJson("INFO",null,jmsQueue,"Starting Horus MQ Connect to queue //"+jmsHost+":"+jmsPort+"/"+jmsQmgr+"/"+jmsQueue);
 		
 		this.jmsQueue = jmsQueue;
 		
 	}
 	
 	@SuppressWarnings("unchecked")
-	private void start(int httpPort) throws JMSException, IllegalArgumentException, NullPointerException, IOException {
+	private void start(int httpPort) throws HorusException {
 		
-		logger.info("Connecting to queue");
+		HorusUtils.logJson("INFO",null, jmsQueue, "Connecting to queue");
 		//connect.start();
 		
-		logger.info("Spawning HTTP Server");
+		HorusUtils.logJson("INFO",null, jmsQueue, "Spawning HTTP Server");
 		DefaultResourceConfig resourceConfig = new DefaultResourceConfig(HorusHttpEndpoint.class);
         // The following line is to enable GZIP when client accepts it
-        resourceConfig.getContainerResponseFilters().add(new GZIPContentEncodingFilter());
-        server = GrizzlyServerFactory.createHttpServer("http://0.0.0.0:"+httpPort , resourceConfig);
-		
+		resourceConfig.getContainerResponseFilters().add(new GZIPContentEncodingFilter());
+		try {
+        	server = GrizzlyServerFactory.createHttpServer("http://0.0.0.0:"+httpPort , resourceConfig);
+		}catch(IOException e){
+			HorusUtils.logJson("FATAL",null, jmsQueue, "Unable to start Web Service: " + e.getMessage());
+			throw new HorusException("Unable to start Web Service",e); 
+		}
+
+
         while(true) {try {
 			Thread.sleep(100);
 		} catch (InterruptedException e) {
@@ -97,19 +105,13 @@ public class JMSProducer {
 	}
 
 
-	public static void main(String[] args) throws JMSException, IllegalArgumentException, NullPointerException, IOException {
+	public static void main(String[] args) throws HorusException {
 		
 		Runtime.getRuntime().addShutdownHook(new Thread() {
 	        @Override
 	            public void run() {
-	                logger.fatal("Received Sigterm... Cleaning up.");
+	                HorusUtils.logJson("FATAL",null, jmsQueue, "Received Sigterm... Cleaning up.");
 	                server.stop();
-	                //try {
-						//connect.stop();
-					//} catch (JMSException e) {
-						// TODO Auto-generated catch block
-					//	logger.error(e.getMessage());
-					//}
 	            }   
 	        }); 
 		

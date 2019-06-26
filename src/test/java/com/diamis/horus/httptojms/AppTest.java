@@ -33,6 +33,9 @@ public class AppTest
      */
     public void testApp()
     {
+        String[] args = new String[]{"localhost","1234","qmgr","channel","testQ","8085"};
+        JMSProducer.main(args);
+
         assertTrue( true );
     }
 }
