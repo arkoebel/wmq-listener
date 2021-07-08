@@ -33,8 +33,8 @@ public class JmsListenerTest extends TestCase {
     public void testJmsListener() {
         JmsListener test = null ;
         try {
-          test  = new JmsListener("localhost", 1234, "TestQMGR", "TestChannel", "TEST_Q", "proxy",
-                    "proxyUrl", "destinationUrl", "application/json");
+         // test  = new JmsListener("localhost", 1234, "TestQMGR", "TestChannel", "TEST_Q", "proxy",
+          //          "proxyUrl", "destinationUrl", "application/json");
             
         } catch (HorusException e) {
             e.printStackTrace();
