@@ -11,10 +11,6 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 
-import java.util.Map;
-import java.util.Iterator;
-import java.util.List;
-
 import javax.annotation.security.PermitAll;
 
 import org.apache.commons.lang3.StringEscapeUtils;
@@ -70,7 +66,7 @@ public class HorusHttpEndpoint {
 		JsonParser json = new JsonParser();
 		HorusUtils.logJson("INFO", business_id, jmsQueue, "Got JSON message");
 		HorusUtils.logJson("INFO", business_id, jmsQueue, "Incoming JSON Message : " + body);
-		Map<String,List<String>> headers = hh.getRequestHeaders();
+		//Map<String,List<String>> headers = hh.getRequestHeaders();
 		
 		JsonElement elt = json.parse(body.trim());
 		JsonObject obj = elt.getAsJsonObject();

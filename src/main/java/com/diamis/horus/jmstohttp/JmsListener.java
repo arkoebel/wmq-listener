@@ -276,20 +276,26 @@ public class JmsListener {
 						if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
 							httpResponseSpan = tracer.buildSpan("Http Response").withTag("ResponseCode",conn.getResponseCode()).asChildOf(httpSpan).start();
 							
-							BufferedReader bb = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
-							StringBuffer myoutput = new StringBuffer();
-							String output;
-							try {
-								while ((output = bb.readLine()) != null) {
-									myoutput.append(output).append("\n");
+							if(null!=conn.getErrorStream()){
+								BufferedReader bb = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+								StringBuffer myoutput = new StringBuffer();
+								String output;
+								try {
+									while ((output = bb.readLine()) != null) {
+										myoutput.append(output).append("\n");
+									}
+								} catch (IOException e1) {
+									// Shouldn't happen.
 								}
-							} catch (IOException e1) {
-								// Shouldn't happen.
-							}
-							String contenttype = conn.getHeaderField("Content-type");
-							HorusUtils.logJson("ERROR", business_id, this.jmsQueue,
+								String contenttype = conn.getHeaderField("Content-type");
+								HorusUtils.logJson("ERROR", business_id, this.jmsQueue,
 									"Failed to get URL response : HTTP error code = " + conn.getResponseCode()
 											+ "Return Content-type: " + contenttype + "Body : " + myoutput.toString());
+							}else{
+								HorusUtils.logJson("ERROR", business_id, this.jmsQueue,
+									"Failed to get URL response : HTTP error code = " + conn.getResponseCode()
+											+ "Return Content-type: " + conn.getHeaderField("Content-type") + "Body : empty");
+							}
 						} else {
 							httpResponseSpan = tracer.buildSpan("Http Response").withTag("ResponseCode",conn.getResponseCode()).asChildOf(httpSpan).start();
 							
