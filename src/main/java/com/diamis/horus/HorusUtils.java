@@ -16,7 +16,15 @@ import com.google.gson.GsonBuilder;
 
 public class HorusUtils {
 
-    public static void logJson(String priority, String business_id,String queue, String message ){
+	public static String BLUE_BOX = "BLUE";
+	public static String PINK_BOX = "PINK";
+
+	public static void logJson(String priority, String business_id,String queue, String message ){
+		HorusUtils.logJson(HorusUtils.BLUE_BOX, priority, business_id, queue, message);
+	}
+
+	public static void logJson(String box, String priority, String business_id,String queue, String message ){
+
 		Logger logger = Logger.getLogger(HorusUtils.class);
 		Map<String,String> map = new HashMap<String,String>();
 		TimeZone tz = TimeZone.getTimeZone("UTC");
@@ -24,7 +32,7 @@ public class HorusUtils {
 		df.setTimeZone(tz);
 		String event = df.format(new Date());
 
-		map.put("program","BLUE");
+		map.put("program",box);
 		map.put("log_level",priority);
 		map.put("timestamp",event);
 		map.put("business_id",business_id);
