@@ -64,22 +64,22 @@ public class JMSProducer {
 
 			if (entry.getValue().startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"))){
 				int pos = entry.getValue().indexOf(":");
-				String key = entry.getValue().substring(0, pos).replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"), "");
+				String key = entry.getValue().substring(0, pos).replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"), "").trim();
 				String value = entry.getValue().substring(pos).trim();
 				//System.out.println("Out Header RFH : " + key + ", " + value);
 				result.get("RFH2").put(key,value);
 			}else if (entry.getValue().startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"))){
 				int pos = entry.getValue().indexOf(":");
-				String key = entry.getValue().substring(0, pos).replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "rfh2-"), "");
+				String key = entry.getValue().substring(0, pos).replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "rfh2-"), "").trim();
 				String value = entry.getValue().substring(pos).trim();
 				//System.out.println("Out Header MQMD : " + key + ", " + value);
 				result.get("MQMD").put(key,value);
 			}else if(entry.getKey().startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"))){
-				String key = entry.getKey().replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-") ,"");
+				String key = entry.getKey().replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-") ,"").trim();
 				//System.out.println("Out Header RFH : " + key + ", " + entry.getValue());
 				result.get("RFH2").put(key,entry.getValue());
 			}else if(entry.getKey().startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"))){
-				String key = entry.getKey().replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"), "");
+				String key = entry.getKey().replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"), "").trim();
 				//System.out.println("Out Header MQMD : " + key + ", " + entry.getValue());
 				result.get("MQMD").put(key,entry.getValue());
 			}
@@ -161,8 +161,9 @@ public class JMSProducer {
 		} catch (JMSException e) {
 			HorusUtils.logJson("ERROR", business_id, jmsQueue,
 					"JMS Error while sending message to queue: " + e.getMessage());
-			HorusUtils.logJson("INFO", business_id, jmsQueue,
-					"Linked Exception: " + e.getLinkedException().getMessage());
+			if(e.getLinkedException()!=null)
+				HorusUtils.logJson("INFO", business_id, jmsQueue,
+						"Linked Exception: " + e.getLinkedException().getMessage());
 			consumedMessage.log("Error sending message in queue");
 			throw new HorusException("JMS Error while sending message to queue", e);
 		} finally {
