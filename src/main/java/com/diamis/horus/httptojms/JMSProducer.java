@@ -60,11 +60,28 @@ public class JMSProducer {
 		result.put("RFH2",new HashMap<String,String>());
 		result.put("MQMD",new HashMap<String,String>());
 		for(Entry<String,String> entry : headers.entrySet()){
-			if(entry.getKey().startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"))){
-				result.get("RFH2").put(entry.getKey().replaceAll("" + JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-") + "" ,""),entry.getValue());
-			}
-			if(entry.getKey().startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"))){
-				result.get("MQMD").put(entry.getKey().replaceAll("" + JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-") + "" ,""),entry.getValue());
+			//System.out.println("Incoming Http Header : " + entry.getKey() + ", " + entry.getValue());
+
+			if (entry.getValue().startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"))){
+				int pos = entry.getValue().indexOf(":");
+				String key = entry.getValue().substring(0, pos).replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"), "");
+				String value = entry.getValue().substring(pos).trim();
+				//System.out.println("Out Header RFH : " + key + ", " + value);
+				result.get("RFH2").put(key,value);
+			}else if (entry.getValue().startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"))){
+				int pos = entry.getValue().indexOf(":");
+				String key = entry.getValue().substring(0, pos).replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "rfh2-"), "");
+				String value = entry.getValue().substring(pos).trim();
+				//System.out.println("Out Header MQMD : " + key + ", " + value);
+				result.get("MQMD").put(key,value);
+			}else if(entry.getKey().startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"))){
+				String key = entry.getKey().replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-") ,"");
+				//System.out.println("Out Header RFH : " + key + ", " + entry.getValue());
+				result.get("RFH2").put(key,entry.getValue());
+			}else if(entry.getKey().startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"))){
+				String key = entry.getKey().replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"), "");
+				//System.out.println("Out Header MQMD : " + key + ", " + entry.getValue());
+				result.get("MQMD").put(key,entry.getValue());
 			}
 			
 		}

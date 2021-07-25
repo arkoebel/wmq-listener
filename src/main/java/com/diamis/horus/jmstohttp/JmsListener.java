@@ -320,7 +320,7 @@ public class JmsListener {
 						conn.setRequestProperty("Accept", this.destinationMimeType);
 
 						for(Entry<String,String> entry : extraHeaders.entrySet()){
-							System.out.println(entry.getKey() + "=" + entry.getValue());
+							//System.out.println(entry.getKey() + "=" + entry.getValue());
 							conn.setRequestProperty(entry.getKey(), entry.getValue());
 						}
 
