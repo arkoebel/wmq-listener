@@ -48,7 +48,7 @@ import io.opentracing.propagation.TextMapAdapter;
 import io.opentracing.propagation.Format.Builtin;
 import io.opentracing.util.GlobalTracer;
 import kotlin.Suppress;
- 
+
 public class JmsListener {
 
 	private static String PROXY_MODE = "proxy";
@@ -61,7 +61,7 @@ public class JmsListener {
 	private String destinationMimeType = null;
 	private String proxyMode = null;
 	private String jmsQueue = null;
-	private static Map<String,String> processingParameters = null;
+	private static Map<String, String> processingParameters = null;
 
 	private Destination queue = null;
 	private MessageConsumer consumer = null;
@@ -72,7 +72,8 @@ public class JmsListener {
 	private Tracer tracer = null;
 
 	JmsListener(String jmsHost, int jmsPort, String jmsQmgr, String jmsChannel, String jmsQueue, String proxyMode,
-			String proxyUrl, String destinationUrl, String destinationMimeType, Map<String,String> extraProps) throws HorusException {
+			String proxyUrl, String destinationUrl, String destinationMimeType, Map<String, String> extraProps)
+			throws HorusException {
 		this.destinationUrl = destinationUrl;
 		this.proxyUrl = proxyUrl;
 		this.destinationMimeType = destinationMimeType;
@@ -81,50 +82,46 @@ public class JmsListener {
 
 		String tracerHost = extraProps.getOrDefault("tracerHost", "localhost");
 		Integer tracerPort = Integer.parseInt(extraProps.getOrDefault("tracerPort", "5775"));
-		HorusUtils.logJson(HorusUtils.PINK_BOX,"INFO", null, jmsQueue, "Init Tracer " + tracerHost + ":" + tracerPort);
+		HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, jmsQueue, "Init Tracer " + tracerHost + ":" + tracerPort);
 		CodecConfiguration codecConfiguration = new CodecConfiguration();
-        codecConfiguration.withCodec(Builtin.HTTP_HEADERS, new B3TextMapCodec.Builder().build());
-        codecConfiguration.withCodec(Builtin.TEXT_MAP, new HorusTracingCodec.Builder().build());
+		codecConfiguration.withCodec(Builtin.HTTP_HEADERS, new B3TextMapCodec.Builder().build());
+		codecConfiguration.withCodec(Builtin.TEXT_MAP, new HorusTracingCodec.Builder().build());
 
-		SamplerConfiguration samplerConfig = new SamplerConfiguration()
-                .withType(ConstSampler.TYPE)
-                .withParam(1);
-            SenderConfiguration senderConfig = new SenderConfiguration()
-                .withAgentHost(tracerHost)
-                .withAgentPort(tracerPort);
-            ReporterConfiguration reporterConfig = new ReporterConfiguration()
-                .withLogSpans(true)
-                .withFlushInterval(1000)
-                .withMaxQueueSize(10000)
-                .withSender(senderConfig);
-			Configuration configuration = new Configuration("PINK_" + jmsQueue)
-				.withSampler(samplerConfig)
-				.withReporter(reporterConfig)
-				.withCodec(codecConfiguration);
+		SamplerConfiguration samplerConfig = new SamplerConfiguration().withType(ConstSampler.TYPE).withParam(1);
+		SenderConfiguration senderConfig = new SenderConfiguration().withAgentHost(tracerHost)
+				.withAgentPort(tracerPort);
+		ReporterConfiguration reporterConfig = new ReporterConfiguration().withLogSpans(true).withFlushInterval(1000)
+				.withMaxQueueSize(10000).withSender(senderConfig);
+		Configuration configuration = new Configuration("PINK_" + jmsQueue).withSampler(samplerConfig)
+				.withReporter(reporterConfig).withCodec(codecConfiguration);
 
-			GlobalTracer.registerIfAbsent(configuration.getTracer());
+		GlobalTracer.registerIfAbsent(configuration.getTracer());
 
-			tracer = GlobalTracer.get();
+		tracer = GlobalTracer.get();
 
-			Span parent = tracer.buildSpan("JMS Listener startup").start();
+		Span parent = tracer.buildSpan("JMS Listener startup").start();
 
-			parent.setTag("box", "PINK");
-			parent.setTag("jmsQueue", jmsQueue);
-			parent.setTag("proxyUrl", proxyUrl);
-			parent.setTag("destinationUrl", destinationUrl);
+		parent.setTag("box", "PINK");
+		parent.setTag("jmsQueue", jmsQueue);
+		parent.setTag("proxyUrl", proxyUrl);
+		parent.setTag("destinationUrl", destinationUrl);
 
 		if (!proxyMode.equals(JmsListener.PROXY_MODE) && !proxyMode.equals(JmsListener.ROUTER_MODE)) {
-			HorusUtils.logJson(HorusUtils.PINK_BOX,"FATAL", null, jmsQueue, "Error: proxyMode MUST be either proxy or router.");
+			HorusUtils.logJson(HorusUtils.PINK_BOX, "FATAL", null, jmsQueue,
+					"Error: proxyMode MUST be either proxy or router.");
 			throw new IllegalArgumentException("Error: proxyMode MUST be either proxy or router.");
 		}
-		HorusUtils.logJson(HorusUtils.PINK_BOX,"INFO", null, jmsQueue, "Sending to " + destinationUrl + " via " + proxyUrl + " ("
-				+ proxyMode + " mode) as " + destinationMimeType);
+		HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, jmsQueue, "Sending to " + destinationUrl + " via "
+				+ proxyUrl + " (" + proxyMode + " mode) as " + destinationMimeType);
 
-		HorusUtils.logJson(HorusUtils.PINK_BOX,"INFO", null, jmsQueue,
+		HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, jmsQueue,
 				"Defining listener for Queue jms://" + jmsHost + ":" + jmsPort + "/" + jmsQmgr + "/" + jmsQueue);
-		HorusUtils.logJson(HorusUtils.PINK_BOX,"INFO", null, jmsQueue, "Sending messages to " + proxyUrl);
-		HorusUtils.logJson(HorusUtils.PINK_BOX,"INFO", null, jmsQueue, "Responses to be forwarded to " + destinationUrl);
-		HorusUtils.logJson(HorusUtils.PINK_BOX,"INFO", null, jmsQueue, "Prefixes : " + extraProps.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-") + "/" + extraProps.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"));
+		HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, jmsQueue, "Sending messages to " + proxyUrl);
+		HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, jmsQueue,
+				"Responses to be forwarded to " + destinationUrl);
+		HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, jmsQueue,
+				"Prefixes : " + extraProps.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-") + "/"
+						+ extraProps.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"));
 
 		parent.log("Start Connection to " + jmsQueue);
 		try {
@@ -143,10 +140,10 @@ public class JmsListener {
 			parent.log("Connection to " + jmsQueue + " established");
 			JmsListener.processingParameters = extraProps;
 		} catch (JMSException e) {
-			HorusUtils.logJson(HorusUtils.PINK_BOX,"FATAL", null, jmsQueue, "JMS Error: " + e.getMessage());
+			HorusUtils.logJson(HorusUtils.PINK_BOX, "FATAL", null, jmsQueue, "JMS Error: " + e.getMessage());
 			parent.log("Failed to connect to " + jmsQueue);
 			throw new HorusException("Unable to start JMS Connection", e);
-		} finally{
+		} finally {
 			parent.finish();
 		}
 
@@ -166,12 +163,13 @@ public class JmsListener {
 	}
 
 	private void start() throws HorusException {
-		HorusUtils.logJson(HorusUtils.PINK_BOX,"INFO", null, this.jmsQueue, "Creating Consumer");
+		HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, this.jmsQueue, "Creating Consumer");
 
 		try {
 			consumer = this.session.createConsumer(queue);
 		} catch (JMSException e3) {
-			HorusUtils.logJson(HorusUtils.PINK_BOX,"FATAL", null, this.jmsQueue, "Unable to create consumer: " + e3.getMessage());
+			HorusUtils.logJson(HorusUtils.PINK_BOX, "FATAL", null, this.jmsQueue,
+					"Unable to create consumer: " + e3.getMessage());
 			throw new HorusException("Unable to create consumer", e3);
 		}
 
@@ -181,11 +179,13 @@ public class JmsListener {
 			try {
 				m = consumer.receive(1);
 			} catch (JMSException e) {
-				HorusUtils.logJson(HorusUtils.PINK_BOX,"INFO", null, this.jmsQueue, "JMS Error : " + e.getMessage() + " retrying in 5s");
+				HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, this.jmsQueue,
+						"JMS Error : " + e.getMessage() + " retrying in 5s");
 				try {
 					Thread.sleep(5000);
 				} catch (InterruptedException e1) {
-					HorusUtils.logJson(HorusUtils.PINK_BOX,"INFO", null, this.jmsQueue, "Sleep interrupted " + e1.getMessage());
+					HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, this.jmsQueue,
+							"Sleep interrupted " + e1.getMessage());
 					e1.printStackTrace();
 				}
 
@@ -194,9 +194,10 @@ public class JmsListener {
 					session = connect.createSession(false, Session.AUTO_ACKNOWLEDGE);
 					queue = (Destination) session.createQueue(jmsQueue);
 					consumer = this.session.createConsumer(queue);
-					HorusUtils.logJson(HorusUtils.PINK_BOX,"INFO", null, this.jmsQueue, "Reconnection successful");
+					HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, this.jmsQueue, "Reconnection successful");
 				} catch (JMSException e2) {
-					HorusUtils.logJson(HorusUtils.PINK_BOX,"INFO", null, this.jmsQueue, "Failed to reconnect. Retrying...");
+					HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, this.jmsQueue,
+							"Failed to reconnect. Retrying...");
 				}
 			}
 
@@ -223,69 +224,82 @@ public class JmsListener {
 					try {
 						traceid = message.getStringProperty("XB3TraceId");
 					} catch (JMSException e) {
-						HorusUtils.logJson(HorusUtils.PINK_BOX,"DEBUG", business_id, this.jmsQueue, "TraceId Error : " + e.getMessage());
+						HorusUtils.logJson(HorusUtils.PINK_BOX, "DEBUG", business_id, this.jmsQueue,
+								"TraceId Error : " + e.getMessage());
 					}
 					try {
 						spanid = message.getStringProperty("XB3SpanId");
 					} catch (JMSException e) {
-						HorusUtils.logJson(HorusUtils.PINK_BOX,"DEBUG", business_id, this.jmsQueue, "SpanId Error : " + e.getMessage());
+						HorusUtils.logJson(HorusUtils.PINK_BOX, "DEBUG", business_id, this.jmsQueue,
+								"SpanId Error : " + e.getMessage());
 					}
 					try {
 						parentspanid = message.getStringProperty("XB3ParentSpanId");
 					} catch (JMSException e) {
-						HorusUtils.logJson(HorusUtils.PINK_BOX,"DEBUG", business_id, this.jmsQueue, "ParentSpanId Error : " + e.getMessage());
+						HorusUtils.logJson(HorusUtils.PINK_BOX, "DEBUG", business_id, this.jmsQueue,
+								"ParentSpanId Error : " + e.getMessage());
 					}
 					try {
 						sampled = message.getStringProperty("XB3Sampled");
 					} catch (JMSException e) {
-						HorusUtils.logJson(HorusUtils.PINK_BOX,"DEBUG", business_id, this.jmsQueue, "Sampled Error : " + e.getMessage());
+						HorusUtils.logJson(HorusUtils.PINK_BOX, "DEBUG", business_id, this.jmsQueue,
+								"Sampled Error : " + e.getMessage());
 					}
 
-					Map<String,String> extraHeaders = new HashMap<String,String>();
-					
-					try{
-						
+					Map<String, String> extraHeaders = new HashMap<String, String>();
+
+					try {
+
 						@SuppressWarnings("unchecked")
 						Enumeration<String> it = message.getPropertyNames();
-						while(it.hasMoreElements()){
+						while (it.hasMoreElements()) {
 							String prop = it.nextElement();
-							if(!(prop.startsWith("XB3"))){
-								String key = JmsListener.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-") + prop;
-								extraHeaders.put(key,key + ": " + message.getStringProperty(prop));
-								HorusUtils.logJson(HorusUtils.PINK_BOX,"INFO", null, this.jmsQueue, "Found RFH Property " + prop + ", value= " + message.getStringProperty(prop));
+							if (!(prop.startsWith("XB3"))) {
+								String key = JmsListener.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX,
+										"rfh2-") + prop;
+								extraHeaders.put(key, key + ": " + message.getStringProperty(prop));
+								HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, this.jmsQueue,
+										"Found RFH Property " + prop + ", value= " + message.getStringProperty(prop));
 							}
 						}
-					}catch(JMSException e){
-						//Nothing
+					} catch (JMSException e) {
+						// Nothing
 					}
-					if(null!=msgId){
-						String key = JmsListener.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-") + JMSProducer.MQMD_MSGID;
-						extraHeaders.put(key,key + ": " + msgId);
-						HorusUtils.logJson(HorusUtils.PINK_BOX,"INFO", null, this.jmsQueue, "Found MQMD MsgId : " + msgId);
-					}
-
-					if(null!=correlId){
-						String key = JmsListener.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-") + JMSProducer.MQMD_CORELID;
-						extraHeaders.put(key,key + ": " + correlId);
-						HorusUtils.logJson(HorusUtils.PINK_BOX,"INFO", null, this.jmsQueue, "Found MQMD CorrelId : " + correlId);
+					if (null != msgId) {
+						String key = JmsListener.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-")
+								+ JMSProducer.MQMD_MSGID;
+						extraHeaders.put(key, key + ": " + msgId);
+						HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, this.jmsQueue,
+								"Found MQMD MsgId : " + msgId);
 					}
 
-					Map<String,String> mapper = new HashMap<String,String>();
-					mapper.put("XB3TraceId",(String)(traceid==null?"0":traceid));
-					mapper.put("XB3SpanId",(String)(spanid==null?"0":spanid));
-					mapper.put("XB3ParentSpanId",(String)(parentspanid==null?"0":parentspanid));
-					mapper.put("XB3Sampled",(String)(sampled==null?"1":sampled));
+					if (null != correlId) {
+						String key = JmsListener.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-")
+								+ JMSProducer.MQMD_CORELID;
+						extraHeaders.put(key, key + ": " + correlId);
+						HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, this.jmsQueue,
+								"Found MQMD CorrelId : " + correlId);
+					}
+
+					Map<String, String> mapper = new HashMap<String, String>();
+					mapper.put("XB3TraceId", (String) (traceid == null ? "0" : traceid));
+					mapper.put("XB3SpanId", (String) (spanid == null ? "0" : spanid));
+					mapper.put("XB3ParentSpanId", (String) (parentspanid == null ? "0" : parentspanid));
+					mapper.put("XB3Sampled", (String) (sampled == null ? "1" : sampled));
 
 					SpanContext current = tracer.extract(Builtin.TEXT_MAP, new TextMapAdapter(mapper));
-					
-					Span consumedMessage = tracer.buildSpan("ReceivedMessage").withTag("Queue",jmsQueue).asChildOf(current).start();
 
-					HorusUtils.logJson(HorusUtils.PINK_BOX,"DEBUG", business_id, this.jmsQueue, "Receiving JMS Message");
+					Span consumedMessage = tracer.buildSpan("ReceivedMessage").withTag("Queue", jmsQueue)
+							.asChildOf(current).start();
+
+					HorusUtils.logJson(HorusUtils.PINK_BOX, "DEBUG", business_id, this.jmsQueue,
+							"Receiving JMS Message");
 					URL proxyCall;
 					try {
 						proxyCall = new URL(proxyUrl);
 					} catch (MalformedURLException e) {
-						HorusUtils.logJson(HorusUtils.PINK_BOX,"FATAL", null, this.jmsQueue, "ProxyURL is invalid: " + proxyUrl);
+						HorusUtils.logJson(HorusUtils.PINK_BOX, "FATAL", null, this.jmsQueue,
+								"ProxyURL is invalid: " + proxyUrl);
 						throw new HorusException("ProxyUrl invalid : " + proxyUrl, e);
 					}
 					String msg;
@@ -293,16 +307,19 @@ public class JmsListener {
 					try {
 						msg = message.getText();
 					} catch (JMSException e) {
-						HorusUtils.logJson(HorusUtils.PINK_BOX,"ERROR", business_id, this.jmsQueue,
+						HorusUtils.logJson(HorusUtils.PINK_BOX, "ERROR", business_id, this.jmsQueue,
 								"Unable to read message: " + e.getMessage());
 						throw new HorusException("Unable to read message", e);
 					}
 
-					HorusUtils.logJson(HorusUtils.PINK_BOX,"INFO", business_id, this.jmsQueue, "Message is : " + msg);
-					HorusUtils.logJson(HorusUtils.PINK_BOX,"DEBUG", business_id, this.jmsQueue, "Tracing parameters : " + traceid + "/" + spanid + "/" + parentspanid + "/" + sampled);
-					HorusUtils.logJson(HorusUtils.PINK_BOX,"DEBUG", business_id, this.jmsQueue, "Sending request to proxy.");
+					HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", business_id, this.jmsQueue, "Message is : " + msg);
+					HorusUtils.logJson(HorusUtils.PINK_BOX, "DEBUG", business_id, this.jmsQueue,
+							"Tracing parameters : " + traceid + "/" + spanid + "/" + parentspanid + "/" + sampled);
+					HorusUtils.logJson(HorusUtils.PINK_BOX, "DEBUG", business_id, this.jmsQueue,
+							"Sending request to proxy.");
 					HttpURLConnection conn;
-					Span httpSpan = tracer.buildSpan("Send to http server").withTag("Destination", destinationUrl).withTag("Proxy",proxyUrl).asChildOf(consumedMessage).start();
+					Span httpSpan = tracer.buildSpan("Send to http server").withTag("Destination", destinationUrl)
+							.withTag("Proxy", proxyUrl).asChildOf(consumedMessage).start();
 					try {
 						conn = (HttpURLConnection) proxyCall.openConnection();
 
@@ -312,7 +329,8 @@ public class JmsListener {
 						} catch (ProtocolException e) {
 							// Nothing
 						}
-						tracer.inject(httpSpan.context(), Builtin.HTTP_HEADERS, new HorusHttpHeadersInjectAdapter(conn));
+						tracer.inject(httpSpan.context(), Builtin.HTTP_HEADERS,
+								new HorusHttpHeadersInjectAdapter(conn));
 						conn.setRequestProperty("X-Business-Id", business_id);
 						if (this.proxyMode.equals(PROXY_MODE))
 							conn.setRequestProperty("x_destination_url", destinationUrl);
@@ -322,8 +340,7 @@ public class JmsListener {
 						conn.setRequestProperty("Content-Type", testJson(msg) ? "application/json" : "application/xml");
 						conn.setRequestProperty("Accept", this.destinationMimeType);
 
-						for(Entry<String,String> entry : extraHeaders.entrySet()){
-							//System.out.println(entry.getKey() + "=" + entry.getValue());
+						for (Entry<String, String> entry : extraHeaders.entrySet()) {
 							conn.setRequestProperty(entry.getKey(), entry.getValue());
 						}
 
@@ -333,9 +350,10 @@ public class JmsListener {
 
 						Span httpResponseSpan = null;
 						if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
-							httpResponseSpan = tracer.buildSpan("Http Response").withTag("ResponseCode",conn.getResponseCode()).asChildOf(httpSpan).start();
-							
-							if(null!=conn.getErrorStream()){
+							httpResponseSpan = tracer.buildSpan("Http Response")
+									.withTag("ResponseCode", conn.getResponseCode()).asChildOf(httpSpan).start();
+
+							if (null != conn.getErrorStream()) {
 								BufferedReader bb = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
 								StringBuffer myoutput = new StringBuffer();
 								String output;
@@ -347,17 +365,20 @@ public class JmsListener {
 									// Shouldn't happen.
 								}
 								String contenttype = conn.getHeaderField("Content-type");
-								HorusUtils.logJson(HorusUtils.PINK_BOX,"ERROR", business_id, this.jmsQueue,
-									"Failed to get URL response : HTTP error code = " + conn.getResponseCode()
-											+ "Return Content-type: " + contenttype + "Body : " + myoutput.toString());
-							}else{
-								HorusUtils.logJson(HorusUtils.PINK_BOX,"ERROR", business_id, this.jmsQueue,
-									"Failed to get URL response : HTTP error code = " + conn.getResponseCode()
-											+ "Return Content-type: " + conn.getHeaderField("Content-type") + "Body : empty");
+								HorusUtils.logJson(HorusUtils.PINK_BOX, "ERROR", business_id, this.jmsQueue,
+										"Failed to get URL response : HTTP error code = " + conn.getResponseCode()
+												+ "Return Content-type: " + contenttype + "Body : "
+												+ myoutput.toString());
+							} else {
+								HorusUtils.logJson(HorusUtils.PINK_BOX, "ERROR", business_id, this.jmsQueue,
+										"Failed to get URL response : HTTP error code = " + conn.getResponseCode()
+												+ "Return Content-type: " + conn.getHeaderField("Content-type")
+												+ "Body : empty");
 							}
 						} else {
-							httpResponseSpan = tracer.buildSpan("Http Response").withTag("ResponseCode",conn.getResponseCode()).asChildOf(httpSpan).start();
-							
+							httpResponseSpan = tracer.buildSpan("Http Response")
+									.withTag("ResponseCode", conn.getResponseCode()).asChildOf(httpSpan).start();
+
 							BufferedReader br = new BufferedReader(new InputStreamReader((conn.getInputStream())));
 
 							String output;
@@ -370,23 +391,23 @@ public class JmsListener {
 								// Shouldn't happen.
 							}
 							String oOut = sb.toString();
-							HorusUtils.logJson(HorusUtils.PINK_BOX,"DEBUG", business_id, this.jmsQueue, "Received response : " + oOut);
+							HorusUtils.logJson(HorusUtils.PINK_BOX, "DEBUG", business_id, this.jmsQueue,
+									"Received response : " + oOut);
 
 						}
 						httpResponseSpan.finish();
-						httpSpan.setTag("ResponseCode",conn.getResponseCode());
+						httpSpan.setTag("ResponseCode", conn.getResponseCode());
 						httpSpan.finish();
 					} catch (IOException e2) {
-						HorusUtils.logJson(HorusUtils.PINK_BOX,"ERROR", business_id, this.jmsQueue,
+						HorusUtils.logJson(HorusUtils.PINK_BOX, "ERROR", business_id, this.jmsQueue,
 								"Unable to contact destination URL" + e2.getMessage());
 						;
 					}
 
 					consumedMessage.finish();
-					
 
 				} else {
-					HorusUtils.logJson(HorusUtils.PINK_BOX,"ERROR", null, this.jmsQueue, "Exiting.");
+					HorusUtils.logJson(HorusUtils.PINK_BOX, "ERROR", null, this.jmsQueue, "Exiting.");
 					break;
 				}
 			}
@@ -394,17 +415,17 @@ public class JmsListener {
 	}
 
 	public static void main(String[] args) throws Exception {
-		String jmsHost, jmsQmgr, jmsChannel, jmsQueue, proxyMode,proxyUrl,destinationUrl,destinationMimeType;
+		String jmsHost, jmsQmgr, jmsChannel, jmsQueue, proxyMode, proxyUrl, destinationUrl, destinationMimeType;
 		Integer jmsPort;
-		Map<String,String> extraProps = new HashMap<String,String>();
+		Map<String, String> extraProps = new HashMap<String, String>();
 
-		if ((args.length != 9)&&(args.length != 1)) {
-			HorusUtils.logJson(HorusUtils.PINK_BOX,"FATAL", null, null, "Program takes nine arguments, " + args.length
+		if ((args.length != 9) && (args.length != 1)) {
+			HorusUtils.logJson(HorusUtils.PINK_BOX, "FATAL", null, null, "Program takes nine arguments, " + args.length
 					+ " supplied : <host> <port> <qmgr> <channel> <read_queue> <proxy_mode: proxy/router> <proxy_url> <destination_url> <destination_mime_type>");
 			System.exit(1);
 		}
 
-		if(args.length == 1){
+		if (args.length == 1) {
 			Properties props = new Properties();
 			try {
 				props.load(new FileReader(args[0]));
@@ -425,11 +446,11 @@ public class JmsListener {
 			destinationUrl = props.getProperty("destination.url");
 			destinationMimeType = props.getProperty("destination.mime-type");
 
-			extraProps.put("tracerHost",props.getProperty("tracer.host"));
-			extraProps.put("tracerPort",props.getProperty("tracer.port"));
-			extraProps.put("rfhHttpHeaderPrefix",props.getProperty("rfh.http.header.prefix"));
-			extraProps.put("mqmdHttpHeaderPrefix",props.getProperty("mqmd.http.header.prefix"));
-		}else{
+			extraProps.put("tracerHost", props.getProperty("tracer.host"));
+			extraProps.put("tracerPort", props.getProperty("tracer.port"));
+			extraProps.put("rfhHttpHeaderPrefix", props.getProperty("rfh.http.header.prefix"));
+			extraProps.put("mqmdHttpHeaderPrefix", props.getProperty("mqmd.http.header.prefix"));
+		} else {
 			jmsHost = args[0];
 			jmsPort = Integer.parseInt(args[1]);
 			jmsQmgr = args[2];
@@ -441,7 +462,8 @@ public class JmsListener {
 			destinationMimeType = args[8];
 		}
 
-		listener = new JmsListener(jmsHost,jmsPort,jmsQmgr,jmsChannel,jmsQueue,proxyMode,proxyUrl,destinationUrl,destinationMimeType,extraProps);
+		listener = new JmsListener(jmsHost, jmsPort, jmsQmgr, jmsChannel, jmsQueue, proxyMode, proxyUrl, destinationUrl,
+				destinationMimeType, extraProps);
 
 		listener.start();
 

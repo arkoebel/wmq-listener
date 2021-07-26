@@ -51,46 +51,57 @@ public class JMSProducer {
 	static MQConnectionFactory factory = null;
 	static String jmsQueue = null;
 	private Tracer tracer = null;
-	private static Map<String,String> processingParameters = null;
+	private static Map<String, String> processingParameters = null;
 
 	private static JMSProducer jmsProducer = null;
 
-	static Map<String,Map<String,String>> stripHeaders(Map<String,String> headers){
-		Map<String,Map<String,String>> result = new HashMap<String,Map<String,String>>();
-		result.put("RFH2",new HashMap<String,String>());
-		result.put("MQMD",new HashMap<String,String>());
-		for(Entry<String,String> entry : headers.entrySet()){
-			//System.out.println("Incoming Http Header : " + entry.getKey() + ", " + entry.getValue());
+	static Map<String, Map<String, String>> stripHeaders(Map<String, String> headers) {
+		Map<String, Map<String, String>> result = new HashMap<String, Map<String, String>>();
+		result.put("RFH2", new HashMap<String, String>());
+		result.put("MQMD", new HashMap<String, String>());
+		for (Entry<String, String> entry : headers.entrySet()) {
 
-			if (entry.getValue().startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"))){
+			if (entry.getValue()
+					.startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"))) {
 				int pos = entry.getValue().indexOf(":");
-				String key = entry.getValue().substring(0, pos).replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"), "").trim();
+				String key = entry.getValue().substring(0, pos)
+						.replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"), "")
+						.trim();
 				String value = entry.getValue().substring(pos).trim();
-				//System.out.println("Out Header RFH : " + key + ", " + value);
-				result.get("RFH2").put(key,value);
-			}else if (entry.getValue().startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"))){
+
+				result.get("RFH2").put(key, value);
+			} else if (entry.getValue()
+					.startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"))) {
 				int pos = entry.getValue().indexOf(":");
-				String key = entry.getValue().substring(0, pos).replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "rfh2-"), "").trim();
+				String key = entry.getValue().substring(0, pos)
+						.replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "rfh2-"), "")
+						.trim();
 				String value = entry.getValue().substring(pos).trim();
-				//System.out.println("Out Header MQMD : " + key + ", " + value);
-				result.get("MQMD").put(key,value);
-			}else if(entry.getKey().startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"))){
-				String key = entry.getKey().replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-") ,"").trim();
-				//System.out.println("Out Header RFH : " + key + ", " + entry.getValue());
-				result.get("RFH2").put(key,entry.getValue());
-			}else if(entry.getKey().startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"))){
-				String key = entry.getKey().replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"), "").trim();
-				//System.out.println("Out Header MQMD : " + key + ", " + entry.getValue());
-				result.get("MQMD").put(key,entry.getValue());
+
+				result.get("MQMD").put(key, value);
+			} else if (entry.getKey()
+					.startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"))) {
+				String key = entry.getKey()
+						.replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"), "")
+						.trim();
+
+				result.get("RFH2").put(key, entry.getValue());
+			} else if (entry.getKey()
+					.startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"))) {
+				String key = entry.getKey()
+						.replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"), "")
+						.trim();
+
+				result.get("MQMD").put(key, entry.getValue());
 			}
-			
+
 		}
 
 		return result;
 	}
 
 	static void sendMessage(String message, String business_id, String traceid, String spanid, String parentspanid,
-			String sampled,Map<String,Map<String,String>> mqheaders) throws HorusException {
+			String sampled, Map<String, Map<String, String>> mqheaders) throws HorusException {
 		Tracer localtracer = GlobalTracer.get();
 		SpanContext current = null;
 		Span root = null;
@@ -100,7 +111,7 @@ public class JMSProducer {
 			mapper.put("X-B3-SpanId", spanid);
 			mapper.put("X-B3-ParentSpanId", parentspanid);
 			mapper.put("X-B3-Sampled", sampled);
-			current = localtracer.extract(Builtin.TEXT_MAP, new TextMapAdapter(mapper));
+			current = localtracer.extract(Builtin.HTTP_HEADERS, new TextMapAdapter(mapper));
 		} else {
 			root = localtracer.buildSpan("Received message (no spans)").start();
 			root.log("Initial request");
@@ -119,38 +130,45 @@ public class JMSProducer {
 			MessageProducer producer = session.createProducer(queue);
 			connect.start();
 			TextMessage msg = session.createTextMessage(message);
-			localtracer.inject(consumedMessage.context(),Builtin.TEXT_MAP,new HorusMQHeaderInjectAdaptor(msg));
-			
-			//Treat MQMD out headers
-			for(Entry<String,String> mqmdentry: mqheaders.get("MQMD").entrySet()){
-				if(JMSProducer.MQMD_MSGID.equals(mqmdentry.getKey())){
-					if(mqmdentry.getValue().contains(":")){
-						msg.setJMSMessageID(mqmdentry.getValue().substring(mqmdentry.getValue().indexOf(":")+1).trim());
-						HorusUtils.logJson("INFO", business_id, jmsQueue,"Setting msgid to " + mqmdentry.getValue().substring(mqmdentry.getValue().indexOf(":")+1).trim());
-					}else{
+			localtracer.inject(consumedMessage.context(), Builtin.TEXT_MAP, new HorusMQHeaderInjectAdaptor(msg));
+
+			// Treat MQMD out headers
+			for (Entry<String, String> mqmdentry : mqheaders.get("MQMD").entrySet()) {
+				if (JMSProducer.MQMD_MSGID.equals(mqmdentry.getKey())) {
+					if (mqmdentry.getValue().contains(":")) {
+						msg.setJMSMessageID(
+								mqmdentry.getValue().substring(mqmdentry.getValue().indexOf(":") + 1).trim());
+						HorusUtils.logJson("INFO", business_id, jmsQueue, "Setting msgid to "
+								+ mqmdentry.getValue().substring(mqmdentry.getValue().indexOf(":") + 1).trim());
+					} else {
 						msg.setJMSMessageID(mqmdentry.getValue());
-						HorusUtils.logJson("INFO", business_id, jmsQueue,"Setting msgid to " + mqmdentry.getValue());
+						HorusUtils.logJson("INFO", business_id, jmsQueue, "Setting msgid to " + mqmdentry.getValue());
 					}
 
 				}
-				if(JMSProducer.MQMD_CORELID.equals(mqmdentry.getKey())){
-					if(mqmdentry.getValue().contains(":")){
-						msg.setJMSCorrelationID(mqmdentry.getValue().substring(mqmdentry.getValue().indexOf(":")+1).trim());
-						HorusUtils.logJson("INFO", business_id, jmsQueue,"Setting correlid to " + mqmdentry.getValue().substring(mqmdentry.getValue().indexOf(":")+1).trim());	
-					}else{
+				if (JMSProducer.MQMD_CORELID.equals(mqmdentry.getKey())) {
+					if (mqmdentry.getValue().contains(":")) {
+						msg.setJMSCorrelationID(
+								mqmdentry.getValue().substring(mqmdentry.getValue().indexOf(":") + 1).trim());
+						HorusUtils.logJson("INFO", business_id, jmsQueue, "Setting correlid to "
+								+ mqmdentry.getValue().substring(mqmdentry.getValue().indexOf(":") + 1).trim());
+					} else {
 						msg.setJMSCorrelationID(mqmdentry.getValue());
-						HorusUtils.logJson("INFO", business_id, jmsQueue,"Setting correlid to " + mqmdentry.getValue());		
+						HorusUtils.logJson("INFO", business_id, jmsQueue,
+								"Setting correlid to " + mqmdentry.getValue());
 					}
 				}
 			}
 
-			//Treat RFH2 out headers
-			for(Entry<String,String> rfhentry: mqheaders.get("RFH2").entrySet()){
-				HorusUtils.logJson("INFO", business_id, jmsQueue,"Setting RFH2 header " + rfhentry.getKey() + " to " + rfhentry.getValue().substring(rfhentry.getValue().indexOf(":")+1).trim());
-				if(rfhentry.getKey().startsWith("JMS"))
-					HorusUtils.logJson("DEBUG",business_id, jmsQueue,"Skipping JMS Property " + rfhentry.getKey());
+			// Treat RFH2 out headers
+			for (Entry<String, String> rfhentry : mqheaders.get("RFH2").entrySet()) {
+				HorusUtils.logJson("INFO", business_id, jmsQueue, "Setting RFH2 header " + rfhentry.getKey() + " to "
+						+ rfhentry.getValue().substring(rfhentry.getValue().indexOf(":") + 1).trim());
+				if (rfhentry.getKey().startsWith("JMS"))
+					HorusUtils.logJson("DEBUG", business_id, jmsQueue, "Skipping JMS Property " + rfhentry.getKey());
 				else
-					msg.setStringProperty(rfhentry.getKey(), rfhentry.getValue().substring(rfhentry.getValue().indexOf(":")+1).trim());
+					msg.setStringProperty(rfhentry.getKey(),
+							rfhentry.getValue().substring(rfhentry.getValue().indexOf(":") + 1).trim());
 			}
 
 			consumedMessage.log("Sending message");
@@ -164,7 +182,7 @@ public class JMSProducer {
 		} catch (JMSException e) {
 			HorusUtils.logJson("ERROR", business_id, jmsQueue,
 					"JMS Error while sending message to queue: " + e.getMessage());
-			if(e.getLinkedException()!=null)
+			if (e.getLinkedException() != null)
 				HorusUtils.logJson("INFO", business_id, jmsQueue,
 						"Linked Exception: " + e.getLinkedException().getMessage());
 			consumedMessage.log("Error sending message in queue");
@@ -176,8 +194,8 @@ public class JMSProducer {
 			root.finish();
 	}
 
-	private JMSProducer(String jmsHost, int jmsPort, String jmsQmgr, String jmsChannel, String jmsQueue,Map<String,String> extraProps)
-			throws HorusException {
+	private JMSProducer(String jmsHost, int jmsPort, String jmsQmgr, String jmsChannel, String jmsQueue,
+			Map<String, String> extraProps) throws HorusException {
 		String tracerHost = extraProps.getOrDefault("tracerHost", "localhost");
 		Integer tracerPort = Integer.parseInt(extraProps.getOrDefault("tracerPort", "5775"));
 		CodecConfiguration codecConfiguration = new CodecConfiguration();
@@ -185,7 +203,8 @@ public class JMSProducer {
 		codecConfiguration.withCodec(Builtin.TEXT_MAP, new HorusTracingCodec.Builder().build());
 
 		SamplerConfiguration samplerConfig = new SamplerConfiguration().withType(ConstSampler.TYPE).withParam(1);
-		SenderConfiguration senderConfig = new SenderConfiguration().withAgentHost(tracerHost).withAgentPort(tracerPort);
+		SenderConfiguration senderConfig = new SenderConfiguration().withAgentHost(tracerHost)
+				.withAgentPort(tracerPort);
 		ReporterConfiguration reporterConfig = new ReporterConfiguration().withLogSpans(true).withFlushInterval(1000)
 				.withMaxQueueSize(10000).withSender(senderConfig);
 		Configuration configuration = new Configuration("BLUE_" + jmsQueue).withSampler(samplerConfig)
@@ -194,7 +213,6 @@ public class JMSProducer {
 		GlobalTracer.registerIfAbsent(configuration.getTracer());
 
 		HorusUtils.logJson("INFO", null, jmsQueue, "Init Tracer " + tracerHost + ":" + tracerPort);
-		
 
 		tracer = GlobalTracer.get();
 
@@ -218,7 +236,9 @@ public class JMSProducer {
 
 		HorusUtils.logJson("INFO", null, jmsQueue,
 				"Starting Horus MQ Connect to queue //" + jmsHost + ":" + jmsPort + "/" + jmsQmgr + "/" + jmsQueue);
-		HorusUtils.logJson("INFO", null, jmsQueue, "Prefixes : " + extraProps.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-") + "/" + extraProps.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"));
+		HorusUtils.logJson("INFO", null, jmsQueue,
+				"Prefixes : " + extraProps.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-") + "/"
+						+ extraProps.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"));
 		JMSProducer.processingParameters = extraProps;
 		JMSProducer.jmsQueue = jmsQueue;
 
@@ -260,7 +280,7 @@ public class JMSProducer {
 
 		String jmsHost, jmsQmgr, jmsChannel, jmsQueue;
 		Integer jmsPort, httpPort;
-		Map<String,String> extraProps = new HashMap<String,String>();
+		Map<String, String> extraProps = new HashMap<String, String>();
 
 		Runtime.getRuntime().addShutdownHook(new Thread() {
 			@Override
@@ -270,13 +290,13 @@ public class JMSProducer {
 			}
 		});
 
-		if ((args.length != 6)&&(args.length != 1)) {
+		if ((args.length != 6) && (args.length != 1)) {
 			System.out.println("Program takes six arguments, " + args.length
 					+ " supplied : <host> <port> <qmgr> <channel> <write_queue> <http_port>");
 			System.exit(1);
 		}
 
-		if(args.length == 1){
+		if (args.length == 1) {
 			Properties props = new Properties();
 			try {
 				props.load(new FileReader(args[0]));
@@ -293,11 +313,11 @@ public class JMSProducer {
 			jmsChannel = props.getProperty("jms.channel");
 			jmsQueue = props.getProperty("jms.queue");
 			httpPort = Integer.parseInt(props.getProperty("http.port"));
-			extraProps.put("tracerHost",props.getProperty("tracer.host"));
-			extraProps.put("tracerPort",props.getProperty("tracer.port"));
-			extraProps.put("rfhHttpHeaderPrefix",props.getProperty("rfh.http.header.prefix"));
-			extraProps.put("mqmdHttpHeaderPrefix",props.getProperty("mqmd.http.header.prefix"));
-		}else{
+			extraProps.put("tracerHost", props.getProperty("tracer.host"));
+			extraProps.put("tracerPort", props.getProperty("tracer.port"));
+			extraProps.put("rfhHttpHeaderPrefix", props.getProperty("rfh.http.header.prefix"));
+			extraProps.put("mqmdHttpHeaderPrefix", props.getProperty("mqmd.http.header.prefix"));
+		} else {
 			jmsHost = args[0];
 			jmsPort = Integer.parseInt(args[1]);
 			jmsQmgr = args[2];
@@ -306,7 +326,7 @@ public class JMSProducer {
 			httpPort = Integer.parseInt(args[5]);
 		}
 
-		jmsProducer = new JMSProducer(jmsHost,jmsPort,jmsQmgr,jmsChannel,jmsQueue, extraProps);
+		jmsProducer = new JMSProducer(jmsHost, jmsPort, jmsQmgr, jmsChannel, jmsQueue, extraProps);
 		jmsProducer.start(httpPort);
 
 	}
