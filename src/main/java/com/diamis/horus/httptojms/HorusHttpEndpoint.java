@@ -9,6 +9,7 @@ import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 import java.util.HashMap;
@@ -26,6 +27,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.sun.jersey.api.core.ResourceConfig;
+import com.sun.jersey.multipart.FormDataMultiPart;
+import com.sun.jersey.multipart.BodyPart;
+
 import com.diamis.horus.HorusException;
 import com.diamis.horus.HorusUtils;
 
@@ -163,4 +167,41 @@ public class HorusHttpEndpoint {
 				.header("Access-Control-Request-Headers", "Access-Control-Allow-Origin, Content-Type").build();
 	}
 
+	@POST
+	@Consumes(MediaType.MULTIPART_FORM_DATA)
+	@Produces("application/json")
+	public String setMessageMultipart(FormDataMultiPart files, 
+										@HeaderParam("X-Business-Id") String business_id,
+										@HeaderParam("X-B3-TraceId") String traceid, @HeaderParam("X-B3-SpanId") String spanid,
+										@HeaderParam("X-B3-ParentSpanId") String parentspanid, @HeaderParam("X-B3-Sampled") String sampled,
+										@Context HttpHeaders headers){
+		String jmsQueue = ctx.getProperty("jmsQueue").toString();
+		HorusUtils.logJson("INFO", business_id, jmsQueue, "Message MultiPart");
+		Map<String,Map<String,String>> strippedHeaders = JMSProducer.stripHeaders(convertHeaders(headers));
+		int i=0;
+		long start=System.nanoTime();
+		long stop=0;
+		
+		for(BodyPart filePart: files.getBodyParts()){
+			i++;
+			String bodyPart = filePart.getEntityAs(String.class).toString();
+
+			HorusUtils.logJson("INFO", business_id, jmsQueue, "Extracted body part " + i + "(Type=" + filePart.getMediaType() +  ") :" + bodyPart);
+
+			try {
+				JMSProducer.sendMessage(bodyPart, business_id, traceid, spanid, parentspanid, sampled,strippedHeaders);
+			} catch (HorusException e) {
+				HorusUtils.logJson("ERROR", business_id, jmsQueue, "Return KO for part " + i + ": " + e.getMessage());
+				HorusUtils.logJson("DEBUG", business_id, jmsQueue, e.getStackTrace().toString());
+				stop=System.nanoTime();
+				return "{\"status\": \"KO\",\"time\":\"" + ((stop - start) / 1000000) + ",\"message\": \"Error on part #" +i +"-"
+						+ e.getMessage().replaceAll("\"", "\\\"") + "\"}";
+			}
+
+		}
+		stop=System.nanoTime();
+		String returnMessage = "{\"status\": \"OK\",\"time\":\"" + ((stop - start) / 1000000) + "\"}";
+			HorusUtils.logJson("INFO", business_id, jmsQueue, "Return OK in " + ((stop - start) / 1000000));
+		return returnMessage;
+	}
 }

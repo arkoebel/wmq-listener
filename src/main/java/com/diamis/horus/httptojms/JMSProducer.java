@@ -147,7 +147,10 @@ public class JMSProducer {
 			//Treat RFH2 out headers
 			for(Entry<String,String> rfhentry: mqheaders.get("RFH2").entrySet()){
 				HorusUtils.logJson("INFO", business_id, jmsQueue,"Setting RFH2 header " + rfhentry.getKey() + " to " + rfhentry.getValue().substring(rfhentry.getValue().indexOf(":")+1).trim());
-				msg.setStringProperty(rfhentry.getKey(), rfhentry.getValue().substring(rfhentry.getValue().indexOf(":")+1).trim());
+				if(rfhentry.getKey().startsWith("JMS"))
+					HorusUtils.logJson("DEBUG",business_id, jmsQueue,"Skipping JMS Property " + rfhentry.getKey());
+				else
+					msg.setStringProperty(rfhentry.getKey(), rfhentry.getValue().substring(rfhentry.getValue().indexOf(":")+1).trim());
 			}
 
 			consumedMessage.log("Sending message");

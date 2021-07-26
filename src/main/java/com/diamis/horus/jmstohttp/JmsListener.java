@@ -47,6 +47,7 @@ import io.opentracing.Tracer;
 import io.opentracing.propagation.TextMapAdapter;
 import io.opentracing.propagation.Format.Builtin;
 import io.opentracing.util.GlobalTracer;
+import kotlin.Suppress;
  
 public class JmsListener {
 
@@ -241,8 +242,10 @@ public class JmsListener {
 					}
 
 					Map<String,String> extraHeaders = new HashMap<String,String>();
+					
 					try{
 						
+						@SuppressWarnings("unchecked")
 						Enumeration<String> it = message.getPropertyNames();
 						while(it.hasMoreElements()){
 							String prop = it.nextElement();
