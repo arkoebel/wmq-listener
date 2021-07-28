@@ -16,7 +16,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
+import java.util.Map.Entry;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 
@@ -190,6 +190,27 @@ public class HorusHttpEndpoint {
 			i++;
 			String bodyPart = filePart.getEntityAs(String.class).toString();
 
+			Map<String,String> bodyHeaders = new HashMap<String,String>();
+			//System.out.println(filePart.getHeaders());
+			for (Entry<String,List<String>> key : filePart.getHeaders().entrySet() ) {
+				//System.out.println("Multipart Header : " + key.getKey() + "/" + key.getValue());
+				bodyHeaders.put(key.getKey(), key.getValue().get(0));
+				//strippedHeaders.merge(key, value, remappingFunction).getHeaders()
+			}
+			Map<String, Map<String, String>> strippedBodyHeaders = JMSProducer.stripHeaders(bodyHeaders);
+
+			Map<String,String> mqMergedHeaders = new HashMap<String,String>(strippedHeaders.get("MQMD"));
+			mqMergedHeaders.putAll(strippedBodyHeaders.get("MQMD"));
+
+			Map<String,String> rfhMergedHeaders = new HashMap<String,String>(strippedHeaders.get("RFH2"));
+			rfhMergedHeaders.putAll(strippedBodyHeaders.get("RFH2"));
+			
+			Map<String,Map<String,String>> headersout = new HashMap<String,Map<String,String>>();
+			headersout.put("MQMD",mqMergedHeaders);
+			headersout.put("RFH2",rfhMergedHeaders);
+
+			//System.out.println(headersout);
+
 			if (filePart.getHeaders().containsKey("Content-Transfer-Encoding")
 					&& filePart.getHeaders().get("Content-Transfer-Encoding").get(0).equals("base64")) {
 
@@ -200,7 +221,7 @@ public class HorusHttpEndpoint {
 					"Extracted body part " + i + "(Type=" + filePart.getMediaType() + ") :" + bodyPart);
 
 			try {
-				JMSProducer.sendMessage(bodyPart, business_id, traceid, spanid, parentspanid, sampled, strippedHeaders);
+				JMSProducer.sendMessage(bodyPart, business_id, traceid, spanid, parentspanid, sampled, headersout);
 			} catch (HorusException e) {
 				HorusUtils.logJson("ERROR", business_id, jmsQueue, "Return KO for part " + i + ": " + e.getMessage());
 				HorusUtils.logJson("DEBUG", business_id, jmsQueue, e.getStackTrace().toString());
