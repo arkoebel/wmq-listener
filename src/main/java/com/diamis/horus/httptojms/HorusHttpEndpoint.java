@@ -67,7 +67,14 @@ public class HorusHttpEndpoint {
 		long stop = 0;
 		try {
 			start = System.nanoTime();
-			Map<String, Map<String, String>> strippedHeaders = JMSProducer.stripHeaders(convertHeaders(headers));
+			Map<String,String> decodedHeaders = new HashMap<String,String>();
+		for (Entry<String,List<String>> entry : headers.getRequestHeaders().entrySet()) {
+			Map<String,String> values = JMSProducer.unpackHeader(entry.getValue().get(0), entry.getKey());
+			decodedHeaders.put(values.get("key"),values.get("value"));
+		}
+		//Map<String, Map<String, String>> strippedHeaders = JMSProducer.stripHeaders(convertHeaders(headers));
+		Map<String, Map<String, String>> strippedHeaders = JMSProducer.stripHeaders(decodedHeaders);
+			//Map<String, Map<String, String>> strippedHeaders = JMSProducer.stripHeaders(convertHeaders(headers));
 			JMSProducer.sendMessage(body, business_id, traceid, spanid, parentspanid, sampled, strippedHeaders);
 			stop = System.nanoTime();
 			String returnMessage = "{\"status\": \"OK\",\"time\":\"" + ((stop - start) / 1000000) + "\"}";
@@ -181,7 +188,13 @@ public class HorusHttpEndpoint {
 
 		String jmsQueue = ctx.getProperty("jmsQueue").toString();
 		HorusUtils.logJson("INFO", business_id, jmsQueue, "Message MultiPart");
-		Map<String, Map<String, String>> strippedHeaders = JMSProducer.stripHeaders(convertHeaders(headers));
+		Map<String,String> decodedHeaders = new HashMap<String,String>();
+		for (Entry<String,List<String>> entry : headers.getRequestHeaders().entrySet()) {
+			Map<String,String> values = JMSProducer.unpackHeader(entry.getValue().get(0), entry.getKey());
+			decodedHeaders.put(values.get("key"),values.get("value"));
+		}
+		//Map<String, Map<String, String>> strippedHeaders = JMSProducer.stripHeaders(convertHeaders(headers));
+		//Map<String, Map<String, String>> strippedHeaders = JMSProducer.stripHeaders(decodedHeaders);
 		int i = 0;
 		long start = System.nanoTime();
 		long stop = 0;
@@ -191,25 +204,23 @@ public class HorusHttpEndpoint {
 			String bodyPart = filePart.getEntityAs(String.class).toString();
 
 			Map<String,String> bodyHeaders = new HashMap<String,String>();
-			//System.out.println(filePart.getHeaders());
 			for (Entry<String,List<String>> key : filePart.getHeaders().entrySet() ) {
-				//System.out.println("Multipart Header : " + key.getKey() + "/" + key.getValue());
-				bodyHeaders.put(key.getKey(), key.getValue().get(0));
-				//strippedHeaders.merge(key, value, remappingFunction).getHeaders()
+				Map<String,String> values = JMSProducer.unpackHeader(key.getValue().get(0), key.getKey());
+				bodyHeaders.put(values.get("key"),values.get("value"));
 			}
 			Map<String, Map<String, String>> strippedBodyHeaders = JMSProducer.stripHeaders(bodyHeaders);
 
-			Map<String,String> mqMergedHeaders = new HashMap<String,String>(strippedHeaders.get("MQMD"));
+			Map<String,String> mqMergedHeaders = new HashMap<String,String>(); //(strippedHeaders.get("MQMD"));
 			mqMergedHeaders.putAll(strippedBodyHeaders.get("MQMD"));
 
-			Map<String,String> rfhMergedHeaders = new HashMap<String,String>(strippedHeaders.get("RFH2"));
+			Map<String,String> rfhMergedHeaders = new HashMap<String,String>(); //(strippedHeaders.get("RFH2"));
 			rfhMergedHeaders.putAll(strippedBodyHeaders.get("RFH2"));
+
+			System.out.println("RFH Merged : " + rfhMergedHeaders);
 			
 			Map<String,Map<String,String>> headersout = new HashMap<String,Map<String,String>>();
 			headersout.put("MQMD",mqMergedHeaders);
 			headersout.put("RFH2",rfhMergedHeaders);
-
-			//System.out.println(headersout);
 
 			if (filePart.getHeaders().containsKey("Content-Transfer-Encoding")
 					&& filePart.getHeaders().get("Content-Transfer-Encoding").get(0).equals("base64")) {

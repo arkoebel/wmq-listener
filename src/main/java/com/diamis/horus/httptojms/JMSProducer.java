@@ -3,6 +3,11 @@ package com.diamis.horus.httptojms;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
+
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -46,6 +51,8 @@ public class JMSProducer {
 	public final static String MQMD_PREFIX = "mqmdHttpHeaderPrefix";
 	public final static String MQMD_MSGID = "msgid";
 	public final static String MQMD_CORELID = "correlid";
+	public final static String PACK_SEP = "#!#";
+	public final static String PACK_PREFIX = "B64PRF-";
 
 	static HttpServer server = null;
 	static MQConnectionFactory factory = null;
@@ -55,42 +62,101 @@ public class JMSProducer {
 
 	private static JMSProducer jmsProducer = null;
 
+	public static void setProcessingParameters(Map<String, String> params) {
+		processingParameters = params;
+	}
+
+	public static String packHeader(String key, String value, String primeKey) {
+		final String rfh2prefix = JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-");
+		final String mqmdprefix = JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-");
+
+		if (primeKey.startsWith(rfh2prefix) || primeKey.startsWith(mqmdprefix)) {
+			if (value.startsWith(JMSProducer.PACK_PREFIX))
+				return value;
+			else {
+				String tmp = key + JMSProducer.PACK_SEP + value;
+				String ret = "";
+				try {
+					ret = URLEncoder.encode(
+							JMSProducer.PACK_PREFIX + Base64.getMimeEncoder().encodeToString(tmp.getBytes()), "UTF-8");
+				} catch (UnsupportedEncodingException e) {
+					// Shouldn't happen
+				}
+				return ret;
+			}
+		}else{
+
+			return value;
+		}
+	}
+
+	public static Map<String, String> unpackHeader(String header, String key) {
+		Map<String, String> result = new HashMap<String, String>();
+		if (header.startsWith(JMSProducer.PACK_PREFIX)) {
+			// New format : PACK_PREFIX + UrlEncode(Base64(key + PACK_SEP + value))
+			String tmp = "";
+			try {
+				tmp = URLDecoder.decode(header.substring(JMSProducer.PACK_PREFIX.length()), "UTF-8");
+			} catch (UnsupportedEncodingException e) {
+				// Shouldn't happen
+			}
+			String decoded = new String(Base64.getMimeDecoder().decode(tmp));
+			if (decoded.contains(JMSProducer.PACK_SEP)) {
+				result.put("key", decoded.substring(0, decoded.indexOf(JMSProducer.PACK_SEP)));
+				result.put("value", decoded
+						.substring(decoded.indexOf(JMSProducer.PACK_SEP) + JMSProducer.PACK_SEP.length()).trim());
+			}
+		} else if (header.startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"))) {
+			// Legacy format : RFH prefix + key + [: ] + value
+
+			result.put("key",
+					header.substring(
+							JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-").length(),
+							header.indexOf(':')).trim());
+			result.put("value", header.substring(header.indexOf(": ") + 1).trim());
+		} else if (header.startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"))) {
+			// Legacy format : MQMD prefix + key + [: ] + value
+
+			result.put("key",
+					header.substring(
+							JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-").length(),
+							header.indexOf(':')).trim());
+			result.put("value", header.substring(header.indexOf(": ") + 1).trim());
+		}else{
+			result.put("key",key);
+			result.put("value",header);
+		}
+
+		return result;
+	}
+
 	static Map<String, Map<String, String>> stripHeaders(Map<String, String> headers) {
+		System.out.println("Strip Headers = " + headers);
 		Map<String, Map<String, String>> result = new HashMap<String, Map<String, String>>();
+		final String rfh2prefix = JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-");
+		final String mqmdprefix = JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-");
 		result.put("RFH2", new HashMap<String, String>());
 		result.put("MQMD", new HashMap<String, String>());
 		for (Entry<String, String> entry : headers.entrySet()) {
 
-			if (entry.getValue()
-					.startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"))) {
+			if ((entry != null) && (entry.getValue() != null) && (entry.getValue().startsWith(rfh2prefix))) {
 				int pos = entry.getValue().indexOf(":");
-				String key = entry.getValue().substring(0, pos)
-						.replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"), "")
-						.trim();
+				String key = entry.getValue().substring(0, pos).replaceAll(rfh2prefix, "").trim();
 				String value = entry.getValue().substring(pos).trim();
 
 				result.get("RFH2").put(key, value);
-			} else if (entry.getValue()
-					.startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"))) {
+			} else if ((entry != null) && (entry.getValue() != null) && (entry.getValue().startsWith(mqmdprefix))) {
 				int pos = entry.getValue().indexOf(":");
-				String key = entry.getValue().substring(0, pos)
-						.replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "rfh2-"), "")
-						.trim();
+				String key = entry.getValue().substring(0, pos).replaceAll(mqmdprefix, "").trim();
 				String value = entry.getValue().substring(pos).trim();
 
 				result.get("MQMD").put(key, value);
-			} else if (entry.getKey()
-					.startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"))) {
-				String key = entry.getKey()
-						.replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"), "")
-						.trim();
+			} else if ((entry != null) && (entry.getValue() != null) && (entry.getKey().startsWith(rfh2prefix))) {
+				String key = entry.getKey().replaceAll(rfh2prefix, "").trim();
 
 				result.get("RFH2").put(key, entry.getValue());
-			} else if (entry.getKey()
-					.startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"))) {
-				String key = entry.getKey()
-						.replaceAll(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"), "")
-						.trim();
+			} else if ((entry != null) && (entry.getValue() != null) && (entry.getKey()).startsWith(mqmdprefix)) {
+				String key = entry.getKey().replaceAll(mqmdprefix, "").trim();
 
 				result.get("MQMD").put(key, entry.getValue());
 			}
@@ -162,13 +228,20 @@ public class JMSProducer {
 
 			// Treat RFH2 out headers
 			for (Entry<String, String> rfhentry : mqheaders.get("RFH2").entrySet()) {
-				HorusUtils.logJson("INFO", business_id, jmsQueue, "Setting RFH2 header " + rfhentry.getKey() + " to "
-						+ rfhentry.getValue().substring(rfhentry.getValue().indexOf(":") + 1).trim());
+				
 				if (rfhentry.getKey().startsWith("JMS"))
 					HorusUtils.logJson("DEBUG", business_id, jmsQueue, "Skipping JMS Property " + rfhentry.getKey());
-				else
+				else if (rfhentry.getValue()
+						.startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"))) {
+					HorusUtils.logJson("INFO", business_id, jmsQueue, "Setting RFH2 header " + rfhentry.getKey()
+							+ " to " + rfhentry.getValue().substring(rfhentry.getValue().indexOf(":") + 1).trim());
 					msg.setStringProperty(rfhentry.getKey(),
 							rfhentry.getValue().substring(rfhentry.getValue().indexOf(":") + 1).trim());
+				} else {
+					HorusUtils.logJson("INFO", business_id, jmsQueue,
+							"Setting RFH2 header " + rfhentry.getKey() + " to " + rfhentry.getValue());
+					msg.setStringProperty(rfhentry.getKey(), rfhentry.getValue());
+				}
 			}
 
 			consumedMessage.log("Sending message");

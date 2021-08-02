@@ -47,7 +47,6 @@ import io.opentracing.Tracer;
 import io.opentracing.propagation.TextMapAdapter;
 import io.opentracing.propagation.Format.Builtin;
 import io.opentracing.util.GlobalTracer;
-import kotlin.Suppress;
 
 public class JmsListener {
 
@@ -80,6 +79,7 @@ public class JmsListener {
 		this.proxyMode = proxyMode;
 		this.jmsQueue = jmsQueue;
 
+		JMSProducer.setProcessingParameters(extraProps);
 		String tracerHost = extraProps.getOrDefault("tracerHost", "localhost");
 		Integer tracerPort = Integer.parseInt(extraProps.getOrDefault("tracerPort", "5775"));
 		HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, jmsQueue, "Init Tracer " + tracerHost + ":" + tracerPort);
@@ -123,6 +123,7 @@ public class JmsListener {
 				"Prefixes : " + extraProps.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-") + "/"
 						+ extraProps.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"));
 
+		
 		parent.log("Start Connection to " + jmsQueue);
 		try {
 			factory = new MQConnectionFactory();
@@ -254,10 +255,10 @@ public class JmsListener {
 						Enumeration<String> it = message.getPropertyNames();
 						while (it.hasMoreElements()) {
 							String prop = it.nextElement();
-							if (!(prop.startsWith("XB3"))) {
+							if (!(prop.startsWith("XB3"))&&!(prop.startsWith("JMS"))) {
 								String key = JmsListener.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX,
 										"rfh2-") + prop;
-								extraHeaders.put(key, key + ": " + message.getStringProperty(prop));
+								extraHeaders.put(key, message.getStringProperty(prop));
 								HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, this.jmsQueue,
 										"Found RFH Property " + prop + ", value= " + message.getStringProperty(prop));
 							}
@@ -268,7 +269,7 @@ public class JmsListener {
 					if (null != msgId) {
 						String key = JmsListener.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-")
 								+ JMSProducer.MQMD_MSGID;
-						extraHeaders.put(key, key + ": " + msgId);
+						extraHeaders.put(key, msgId);
 						HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, this.jmsQueue,
 								"Found MQMD MsgId : " + msgId);
 					}
@@ -276,7 +277,7 @@ public class JmsListener {
 					if (null != correlId) {
 						String key = JmsListener.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-")
 								+ JMSProducer.MQMD_CORELID;
-						extraHeaders.put(key, key + ": " + correlId);
+						extraHeaders.put(key, correlId);
 						HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, this.jmsQueue,
 								"Found MQMD CorrelId : " + correlId);
 					}
@@ -341,7 +342,8 @@ public class JmsListener {
 						conn.setRequestProperty("Accept", this.destinationMimeType);
 
 						for (Entry<String, String> entry : extraHeaders.entrySet()) {
-							conn.setRequestProperty(entry.getKey(), entry.getValue());
+							String res = JMSProducer.packHeader(entry.getKey(),entry.getValue(), entry.getKey());
+							conn.setRequestProperty(entry.getKey(), res);
 						}
 
 						OutputStream os = conn.getOutputStream();
