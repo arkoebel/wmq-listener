@@ -53,6 +53,7 @@ public class JMSProducer {
 	public final static String MQMD_CORELID = "correlid";
 	public final static String PACK_SEP = "#!#";
 	public final static String PACK_PREFIX = "B64PRF-";
+	public final static String MESSAGE_DELAY = "delayMessages";
 
 	static HttpServer server = null;
 	static MQConnectionFactory factory = null;
@@ -108,12 +109,13 @@ public class JMSProducer {
 			}
 		} else if (header.startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"))) {
 			// Legacy format : RFH prefix + key + [: ] + value
-
-			result.put("key",
-					header.substring(
-							JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-").length(),
-							header.indexOf(':')).trim());
-			result.put("value", header.substring(header.indexOf(": ") + 1).trim());
+			String kk = header.substring(
+				0,
+				header.indexOf(':')).trim();
+			String vv = header.substring(header.indexOf(":") + 1).trim();
+			System.out.println("Extracted key=" + kk + ", val=" + vv + ", header=" + header);
+			result.put("key",kk);
+			result.put("value", vv);
 		} else if (header.startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"))) {
 			// Legacy format : MQMD prefix + key + [: ] + value
 
@@ -121,7 +123,7 @@ public class JMSProducer {
 					header.substring(
 							JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-").length(),
 							header.indexOf(':')).trim());
-			result.put("value", header.substring(header.indexOf(": ") + 1).trim());
+			result.put("value", header.substring(header.indexOf(":") + 1).trim());
 		}else{
 			result.put("key",key);
 			result.put("value",header);
@@ -142,13 +144,13 @@ public class JMSProducer {
 			if ((entry != null) && (entry.getValue() != null) && (entry.getValue().startsWith(rfh2prefix))) {
 				int pos = entry.getValue().indexOf(":");
 				String key = entry.getValue().substring(0, pos).replaceAll(rfh2prefix, "").trim();
-				String value = entry.getValue().substring(pos).trim();
+				String value = entry.getValue().substring(pos+1).trim();
 
 				result.get("RFH2").put(key, value);
 			} else if ((entry != null) && (entry.getValue() != null) && (entry.getValue().startsWith(mqmdprefix))) {
 				int pos = entry.getValue().indexOf(":");
 				String key = entry.getValue().substring(0, pos).replaceAll(mqmdprefix, "").trim();
-				String value = entry.getValue().substring(pos).trim();
+				String value = entry.getValue().substring(pos+1).trim();
 
 				result.get("MQMD").put(key, value);
 			} else if ((entry != null) && (entry.getValue() != null) && (entry.getKey().startsWith(rfh2prefix))) {
@@ -163,11 +165,14 @@ public class JMSProducer {
 
 		}
 
+		System.out.println("Out " + result);
+
 		return result;
 	}
 
 	static void sendMessage(String message, String business_id, String traceid, String spanid, String parentspanid,
 			String sampled, Map<String, Map<String, String>> mqheaders) throws HorusException {
+		int delay = Integer.parseInt(JMSProducer.processingParameters.getOrDefault(JMSProducer.MESSAGE_DELAY, "0"));
 		Tracer localtracer = GlobalTracer.get();
 		SpanContext current = null;
 		Span root = null;
@@ -252,6 +257,9 @@ public class JMSProducer {
 			session.close();
 			connect.close();
 			consumedMessage.log("Message sent");
+			Thread.sleep(delay);
+			System.out.println("Waited " + delay + "ms");
+			consumedMessage.log("After delay between messages");
 		} catch (JMSException e) {
 			HorusUtils.logJson("ERROR", business_id, jmsQueue,
 					"JMS Error while sending message to queue: " + e.getMessage());
@@ -260,6 +268,8 @@ public class JMSProducer {
 						"Linked Exception: " + e.getLinkedException().getMessage());
 			consumedMessage.log("Error sending message in queue");
 			throw new HorusException("JMS Error while sending message to queue", e);
+		} catch(InterruptedException e) {
+			throw new HorusException("Interrupted while waiting between messages.", e);	
 		} finally {
 			consumedMessage.finish();
 		}
@@ -388,8 +398,9 @@ public class JMSProducer {
 			httpPort = Integer.parseInt(props.getProperty("http.port"));
 			extraProps.put("tracerHost", props.getProperty("tracer.host"));
 			extraProps.put("tracerPort", props.getProperty("tracer.port"));
-			extraProps.put("rfhHttpHeaderPrefix", props.getProperty("rfh.http.header.prefix"));
-			extraProps.put("mqmdHttpHeaderPrefix", props.getProperty("mqmd.http.header.prefix"));
+			extraProps.put(JMSProducer.RFH_PREFIX, props.getProperty("rfh.http.header.prefix"));
+			extraProps.put(JMSProducer.MQMD_PREFIX, props.getProperty("mqmd.http.header.prefix"));
+			extraProps.put(JMSProducer.MESSAGE_DELAY,props.getProperty("message.delay"));
 		} else {
 			jmsHost = args[0];
 			jmsPort = Integer.parseInt(args[1]);
