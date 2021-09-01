@@ -6,6 +6,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.StringReader;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.ProtocolException;
@@ -26,7 +27,9 @@ import javax.jms.MessageConsumer;
 import javax.jms.Session;
 import javax.jms.TextMessage;
 
-import com.google.gson.Gson;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
+import com.google.gson.stream.MalformedJsonException;
 import com.ibm.mq.jms.MQConnectionFactory;
 
 import com.diamis.horus.HorusException;
@@ -123,7 +126,6 @@ public class JmsListener {
 				"Prefixes : " + extraProps.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-") + "/"
 						+ extraProps.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"));
 
-		
 		parent.log("Start Connection to " + jmsQueue);
 		try {
 			factory = new MQConnectionFactory();
@@ -151,16 +153,52 @@ public class JmsListener {
 	}
 
 	private boolean testJson(String json) {
-		Gson gson = new Gson();
+		JsonReader jsonReader = new JsonReader(new StringReader(json));
 		try {
-			gson.fromJson(json, Object.class);
+			JsonToken token;
+			loop: while ((token = jsonReader.peek()) != JsonToken.END_DOCUMENT && token != null) {
+				switch (token) {
+					case BEGIN_ARRAY:
+						jsonReader.beginArray();
+						break;
+					case END_ARRAY:
+						jsonReader.endArray();
+						break;
+					case BEGIN_OBJECT:
+						jsonReader.beginObject();
+						break;
+					case END_OBJECT:
+						jsonReader.endObject();
+						break;
+					case NAME:
+						jsonReader.nextName();
+						break;
+					case STRING:
+					case NUMBER:
+					case BOOLEAN:
+					case NULL:
+						jsonReader.skipValue();
+						break;
+					case END_DOCUMENT:
+						break loop;
+					default:
+						throw new AssertionError(token);
+				}
+			}
+			//System.out.println("JSON OK");
 			return true;
-		} catch (com.google.gson.JsonSyntaxException ex) {
+		} catch (final MalformedJsonException ignored) {
+			//System.out.println("KO " + ignored.getMessage());
 			return false;
-		} catch (com.google.gson.JsonParseException ex) {
+		} catch(IOException exception){
+			//System.out.println("KO " + exception.getMessage());
+			return false;
+		} catch(AssertionError exception){
+			//System.out.println("KO " + exception.getMessage());
 			return false;
 		}
-		// return (json.startsWith("{")&&json.endsWith("}"));
+
+
 	}
 
 	private void start() throws HorusException {
@@ -255,7 +293,7 @@ public class JmsListener {
 						Enumeration<String> it = message.getPropertyNames();
 						while (it.hasMoreElements()) {
 							String prop = it.nextElement();
-							if (!(prop.startsWith("XB3"))&&!(prop.startsWith("JMS"))) {
+							if (!(prop.startsWith("XB3")) && !(prop.startsWith("JMS"))) {
 								String key = JmsListener.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX,
 										"rfh2-") + prop;
 								extraHeaders.put(key, message.getStringProperty(prop));
@@ -342,7 +380,7 @@ public class JmsListener {
 						conn.setRequestProperty("Accept", this.destinationMimeType);
 
 						for (Entry<String, String> entry : extraHeaders.entrySet()) {
-							String res = JMSProducer.packHeader(entry.getKey(),entry.getValue(), entry.getKey());
+							String res = JMSProducer.packHeader(entry.getKey(), entry.getValue(), entry.getKey());
 							conn.setRequestProperty(entry.getKey(), res);
 						}
 
