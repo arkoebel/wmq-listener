@@ -4,14 +4,14 @@ import java.util.Iterator;
 import java.util.Map.Entry;
 
 import javax.jms.JMSException;
-import javax.jms.TextMessage;
+import javax.jms.Message;
 
 import io.opentracing.propagation.TextMap;
 
 public class HorusMQHeaderInjectAdaptor implements TextMap {
-    private final TextMessage message;
+    private final Message message;
   
-    public HorusMQHeaderInjectAdaptor(final TextMessage message) {
+    public HorusMQHeaderInjectAdaptor(final Message message) {
       this.message = message;
     }
   

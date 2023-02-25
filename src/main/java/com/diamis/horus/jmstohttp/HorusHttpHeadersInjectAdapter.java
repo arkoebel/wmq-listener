@@ -1,22 +1,22 @@
 package com.diamis.horus.jmstohttp;
 
-import java.net.HttpURLConnection;
 import java.util.Iterator;
 import java.util.Map.Entry;
 
 
 import io.opentracing.propagation.TextMap;
+import okhttp3.Request.Builder;
 
 class HorusHttpHeadersInjectAdapter implements TextMap {
-  private final HttpURLConnection httpRequest;
+  private final Builder httpRequest;
 
-  public HorusHttpHeadersInjectAdapter(final HttpURLConnection httpRequest) {
+  public HorusHttpHeadersInjectAdapter(final Builder httpRequest) {
     this.httpRequest = httpRequest;
   }
 
   //@Override
   public void put(String key, String value){
-    httpRequest.addRequestProperty(key, value);
+    httpRequest.header(key, value);
   }
 
   public Iterator<Entry<String,String>> iterator() {

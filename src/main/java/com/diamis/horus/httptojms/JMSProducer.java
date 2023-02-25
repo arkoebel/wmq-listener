@@ -6,11 +6,12 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
-
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.List;
 import java.util.Map.Entry;
 
 import javax.jms.Connection;
@@ -19,6 +20,8 @@ import javax.jms.JMSException;
 import javax.jms.MessageProducer;
 import javax.jms.Session;
 import javax.jms.TextMessage;
+import javax.jms.Message;
+import javax.jms.BytesMessage;
 
 import org.glassfish.grizzly.http.server.HttpServer;
 
@@ -54,14 +57,21 @@ public class JMSProducer {
 	public final static String PACK_SEP = "#!#";
 	public final static String PACK_PREFIX = "B64PRF-";
 	public final static String MESSAGE_DELAY = "delayMessages";
+	public final static String OUTPUT_FORMAT = "outputFormat";
+	public final static String FILEACT_LENGTH = "fileactLength";
 
 	static HttpServer server = null;
 	static MQConnectionFactory factory = null;
 	static String jmsQueue = null;
 	private Tracer tracer = null;
+	private static Map<String, MessageProducer> producers = null;
+	private static Connection connection = null;
+	private static Session session = null;
 	private static Map<String, String> processingParameters = null;
 
 	private static JMSProducer jmsProducer = null;
+
+	private static String messageType;
 
 	public static void setProcessingParameters(Map<String, String> params) {
 		processingParameters = params;
@@ -85,7 +95,7 @@ public class JMSProducer {
 				}
 				return ret;
 			}
-		}else{
+		} else {
 
 			return value;
 		}
@@ -110,11 +120,11 @@ public class JMSProducer {
 		} else if (header.startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-"))) {
 			// Legacy format : RFH prefix + key + [: ] + value
 			String kk = header.substring(
-				0,
-				header.indexOf(':')).trim();
+					0,
+					header.indexOf(':')).trim();
 			String vv = header.substring(header.indexOf(":") + 1).trim();
 			System.out.println("Extracted key=" + kk + ", val=" + vv + ", header=" + header);
-			result.put("key",kk);
+			result.put("key", kk);
 			result.put("value", vv);
 		} else if (header.startsWith(JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"))) {
 			// Legacy format : MQMD prefix + key + [: ] + value
@@ -124,9 +134,9 @@ public class JMSProducer {
 							JMSProducer.processingParameters.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-").length(),
 							header.indexOf(':')).trim());
 			result.put("value", header.substring(header.indexOf(":") + 1).trim());
-		}else{
-			result.put("key",key);
-			result.put("value",header);
+		} else {
+			result.put("key", key);
+			result.put("value", header);
 		}
 
 		return result;
@@ -144,13 +154,13 @@ public class JMSProducer {
 			if ((entry != null) && (entry.getValue() != null) && (entry.getValue().startsWith(rfh2prefix))) {
 				int pos = entry.getValue().indexOf(":");
 				String key = entry.getValue().substring(0, pos).replaceAll(rfh2prefix, "").trim();
-				String value = entry.getValue().substring(pos+1).trim();
+				String value = entry.getValue().substring(pos + 1).trim();
 
 				result.get("RFH2").put(key, value);
 			} else if ((entry != null) && (entry.getValue() != null) && (entry.getValue().startsWith(mqmdprefix))) {
 				int pos = entry.getValue().indexOf(":");
 				String key = entry.getValue().substring(0, pos).replaceAll(mqmdprefix, "").trim();
-				String value = entry.getValue().substring(pos+1).trim();
+				String value = entry.getValue().substring(pos + 1).trim();
 
 				result.get("MQMD").put(key, value);
 			} else if ((entry != null) && (entry.getValue() != null) && (entry.getKey().startsWith(rfh2prefix))) {
@@ -170,8 +180,17 @@ public class JMSProducer {
 		return result;
 	}
 
-	static void sendMessage(String message, String business_id, String traceid, String spanid, String parentspanid,
+	static void sendMessage(String jmsQueue, String message, String business_id, String traceid, String spanid,
+			String parentspanid,
 			String sampled, Map<String, Map<String, String>> mqheaders) throws HorusException {
+
+		sendMessage(jmsQueue, message, business_id, traceid, spanid, parentspanid, sampled, mqheaders,0,0);
+	}
+
+	static void sendMessage(String jmsQueue, String message, String business_id, String traceid, String spanid,
+			String parentspanid,
+			String sampled, Map<String, Map<String, String>> mqheaders,
+			int messageNumber, int nbMessages) throws HorusException {
 		int delay = Integer.parseInt(JMSProducer.processingParameters.getOrDefault(JMSProducer.MESSAGE_DELAY, "0"));
 		Tracer localtracer = GlobalTracer.get();
 		SpanContext current = null;
@@ -195,12 +214,22 @@ public class JMSProducer {
 		HorusUtils.logJson("DEBUG", business_id, jmsQueue, "Writing message to " + jmsQueue + " : " + message + "\n");
 		try {
 			consumedMessage.log("Establishing connection");
-			Connection connect = factory.createConnection(null, null);
-			Session session = connect.createSession(false, Session.AUTO_ACKNOWLEDGE);
-			Destination queue = (Destination) session.createQueue(jmsQueue);
-			MessageProducer producer = session.createProducer(queue);
-			connect.start();
-			TextMessage msg = session.createTextMessage(message);
+			if (!producers.containsKey(jmsQueue)) {
+				Destination queue = (Destination) session.createQueue(jmsQueue);
+				MessageProducer producer = session.createProducer(queue);
+				producers.put(jmsQueue, producer);
+			}
+
+			Message msg;
+			System.out.println("ooo" + JMSProducer.messageType + "ooo");
+			if ("Text".equals(JMSProducer.messageType))
+				msg = session.createTextMessage(message);
+			else {
+				HorusUtils.logJson("DEBUG", business_id, jmsQueue, "Binary Mode");
+				System.out.println("Binary Mode");
+				msg = session.createBytesMessage();
+				((BytesMessage) msg).writeBytes(message.getBytes());
+			}
 			localtracer.inject(consumedMessage.context(), Builtin.TEXT_MAP, new HorusMQHeaderInjectAdaptor(msg));
 
 			// Treat MQMD out headers
@@ -231,9 +260,18 @@ public class JMSProducer {
 				}
 			}
 
+			msg.setJMSType(" ");
+
+			if (nbMessages!=0){
+				msg.setStringProperty("JMSXGroupID",business_id);
+				msg.setIntProperty("JMSXGroupSeq",messageNumber);
+				if(messageNumber==nbMessages)
+					msg.setBooleanProperty("JMS_IBM_Last_Msg_In_Group", true);
+			}
+
 			// Treat RFH2 out headers
 			for (Entry<String, String> rfhentry : mqheaders.get("RFH2").entrySet()) {
-				
+
 				if (rfhentry.getKey().startsWith("JMS"))
 					HorusUtils.logJson("DEBUG", business_id, jmsQueue, "Skipping JMS Property " + rfhentry.getKey());
 				else if (rfhentry.getValue()
@@ -250,12 +288,10 @@ public class JMSProducer {
 			}
 
 			consumedMessage.log("Sending message");
-			producer.send(msg);
+			HorusUtils.logJson("DEBUG", business_id, jmsQueue, "Sending message to " + jmsQueue);
+			producers.get(jmsQueue).send(msg);
 			msg = null;
-			connect.stop();
-			producer.close();
-			session.close();
-			connect.close();
+
 			consumedMessage.log("Message sent");
 			Thread.sleep(delay);
 			System.out.println("Waited " + delay + "ms");
@@ -268,8 +304,8 @@ public class JMSProducer {
 						"Linked Exception: " + e.getLinkedException().getMessage());
 			consumedMessage.log("Error sending message in queue");
 			throw new HorusException("JMS Error while sending message to queue", e);
-		} catch(InterruptedException e) {
-			throw new HorusException("Interrupted while waiting between messages.", e);	
+		} catch (InterruptedException e) {
+			throw new HorusException("Interrupted while waiting between messages.", e);
 		} finally {
 			consumedMessage.finish();
 		}
@@ -284,6 +320,7 @@ public class JMSProducer {
 		CodecConfiguration codecConfiguration = new CodecConfiguration();
 		codecConfiguration.withCodec(Builtin.HTTP_HEADERS, new B3TextMapCodec.Builder().build());
 		codecConfiguration.withCodec(Builtin.TEXT_MAP, new HorusTracingCodec.Builder().build());
+		JMSProducer.messageType = extraProps.getOrDefault(JMSProducer.OUTPUT_FORMAT, "Text");
 
 		SamplerConfiguration samplerConfig = new SamplerConfiguration().withType(ConstSampler.TYPE).withParam(1);
 		SenderConfiguration senderConfig = new SenderConfiguration().withAgentHost(tracerHost)
@@ -311,10 +348,16 @@ public class JMSProducer {
 			factory.setQueueManager(jmsQmgr);
 			factory.setChannel(jmsChannel);
 			factory.setTransportType(1);
+			connection = factory.createConnection(null, null);
+			session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+			connection.start();
+
 		} catch (JMSException e) {
 			HorusUtils.logJson("ERROR", null, jmsQueue, "Error while connecting to QM: " + e.getMessage());
 			throw new HorusException("Error while connecting to QM", e);
 		}
+
+		producers = new HashMap<String, MessageProducer>();
 		parent.log("Connection to " + jmsQueue + " established");
 
 		HorusUtils.logJson("INFO", null, jmsQueue,
@@ -329,9 +372,6 @@ public class JMSProducer {
 
 	@SuppressWarnings("unchecked")
 	private void start(int httpPort) throws HorusException {
-
-		HorusUtils.logJson("INFO", null, jmsQueue, "Connecting to queue");
-		// connect.start();
 
 		HorusUtils.logJson("INFO", null, jmsQueue, "Spawning HTTP Server");
 		DefaultResourceConfig resourceConfig = new DefaultResourceConfig(HorusHttpEndpoint.class);
@@ -369,7 +409,21 @@ public class JMSProducer {
 			@Override
 			public void run() {
 				HorusUtils.logJson("FATAL", null, JMSProducer.jmsQueue, "Received Sigterm... Cleaning up.");
+				try{
+				connection.stop();
+				producers.keySet().forEach(
+					(k) -> {
+						try{
+							producers.get(k).close();
+						}catch(JMSException ee){
+
+						}});
+				session.close();
+				connection.close();
 				server.stop();
+				}catch(JMSException e){
+					HorusUtils.logJson("FATAL", null, JMSProducer.jmsQueue, e.getMessage());
+				}
 			}
 		});
 
@@ -401,6 +455,8 @@ public class JMSProducer {
 			extraProps.put(JMSProducer.RFH_PREFIX, props.getProperty("rfh.http.header.prefix"));
 			extraProps.put(JMSProducer.MQMD_PREFIX, props.getProperty("mqmd.http.header.prefix"));
 			extraProps.put(JMSProducer.MESSAGE_DELAY,props.getProperty("message.delay"));
+			extraProps.put(JMSProducer.OUTPUT_FORMAT,props.getProperty("output.format","Text"));
+			extraProps.put(JMSProducer.FILEACT_LENGTH,props.getProperty("fileact.size", "1024"));
 		} else {
 			jmsHost = args[0];
 			jmsPort = Integer.parseInt(args[1]);
