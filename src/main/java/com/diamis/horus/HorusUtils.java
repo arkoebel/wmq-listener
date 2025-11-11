@@ -50,10 +50,10 @@ public class HorusUtils {
 
 	public static List<String> splitDataPDU(String input, int length, String business_id, String jmsQueue) {
 		List<String> messages = new ArrayList<String>();
-		if (input.length()<length){
-			messages.add(input);
-			return messages;
-		}
+		//if (input.length()<length){
+		//	messages.add(input);
+		//	return messages;
+		//}
 		Pattern pattern = Pattern.compile("<(.*):DataPDU ");
 		Matcher matcher = pattern.matcher(input);
 		boolean matchFound = matcher.find();
@@ -68,7 +68,9 @@ public class HorusUtils {
 			HorusUtils.logJson("ERROR", business_id, jmsQueue, "Message isn't DataPDU Format");
 			messages.add(input);
 		} else {
-			String pdubody =  "<File>" + matcher.group(1)  + "</File>";
+			// Because now we don't want File anymore, for reasons...
+			//String pdubody =  "<File>" + matcher.group(1)  + "</File>";
+			String pdubody =  matcher.group(1) ;
 			String pduenv = input.replaceFirst("<" + namespace + "Body>(.*)</" + namespace + "Body>", "");
 			messages.add(0, pduenv);
 			int max = pdubody.length() / length;

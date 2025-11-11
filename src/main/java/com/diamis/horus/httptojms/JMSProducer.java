@@ -1,11 +1,13 @@
 package com.diamis.horus.httptojms;
 
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
+import java.security.KeyStore;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -22,6 +24,12 @@ import javax.jms.Session;
 import javax.jms.TextMessage;
 import javax.jms.Message;
 import javax.jms.BytesMessage;
+
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManagerFactory;
+
 
 import org.glassfish.grizzly.http.server.HttpServer;
 
@@ -265,8 +273,10 @@ public class JMSProducer {
 			if (nbMessages!=0){
 				msg.setStringProperty("JMSXGroupID",business_id);
 				msg.setIntProperty("JMSXGroupSeq",messageNumber);
-				if(messageNumber==nbMessages)
+				if(messageNumber==nbMessages){
+					HorusUtils.logJson("DEBUG", business_id, jmsQueue, "Last message in group\n");
 					msg.setBooleanProperty("JMS_IBM_Last_Msg_In_Group", true);
+				}
 			}
 
 			// Treat RFH2 out headers
@@ -348,6 +358,9 @@ public class JMSProducer {
 			factory.setQueueManager(jmsQmgr);
 			factory.setChannel(jmsChannel);
 			factory.setTransportType(1);
+			if(extraProps.get("cipherSuite") != null) {
+				factory.setSSLCipherSuite(extraProps.get("cipherSuite"));
+			}
 			connection = factory.createConnection(null, null);
 			session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 			connection.start();
@@ -355,6 +368,9 @@ public class JMSProducer {
 		} catch (JMSException e) {
 			HorusUtils.logJson("ERROR", null, jmsQueue, "Error while connecting to QM: " + e.getMessage());
 			throw new HorusException("Error while connecting to QM", e);
+		} catch (Exception e) {
+			HorusUtils.logJson("ERROR", null, jmsQueue, "Error while setting up SSL: " + e.getMessage());
+			throw new HorusException("Error while setting up SSL", e);
 		}
 
 		producers = new HashMap<String, MessageProducer>();
@@ -457,6 +473,13 @@ public class JMSProducer {
 			extraProps.put(JMSProducer.MESSAGE_DELAY,props.getProperty("message.delay"));
 			extraProps.put(JMSProducer.OUTPUT_FORMAT,props.getProperty("output.format","Text"));
 			extraProps.put(JMSProducer.FILEACT_LENGTH,props.getProperty("fileact.size", "1024"));
+			if (props.getProperty("ssl.cipher.suite") != null)
+				extraProps.put("cipherSuite", props.getProperty("ssl.cipher.suite"));
+			//extraProps.put("keyStorePath", props.getProperty("ssl.keystore.path"));
+			//extraProps.put("keyStorePassword", props.getProperty("ssl.keystore.password"));
+			//extraProps.put("keyStoreAlias", props.getProperty("ssl.keystore.alias"));
+			System.setProperty("javax.net.ssl.trustStore", props.getProperty("ssl.truststore.path"));
+			System.setProperty("javax.net.ssl.trustStorePassword", props.getProperty("ssl.truststore.password"));
 		} else {
 			jmsHost = args[0];
 			jmsPort = Integer.parseInt(args[1]);

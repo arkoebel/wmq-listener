@@ -122,12 +122,22 @@ public class HorusHttpEndpoint {
 			@HeaderParam("X-B3-TraceId") String traceid, @HeaderParam("X-B3-SpanId") String spanid,
 			@HeaderParam("X-B3-ParentSpanId") String parentspanid, @HeaderParam("X-B3-Sampled") String sampled,
 			@QueryParam("queue") String outQueue,
+			@QueryParam("nodecode") String nodecodes,
 			@Context HttpHeaders headers) {
 		String jmsQueue = null;
+		boolean nodecode = false;
 		if (outQueue == null)
 			jmsQueue = ctx.getProperty("jmsQueue").toString();
 		else
 			jmsQueue = outQueue;
+
+		if (nodecodes == null)
+				nodecode = false;
+		else if (nodecodes.equals("true"))
+			nodecode = true;
+		else
+			nodecode = false;
+	
 
 		JsonParser json = new JsonParser();
 		HorusUtils.logJson("INFO", business_id, jmsQueue, "Got JSON message");
@@ -136,7 +146,7 @@ public class HorusHttpEndpoint {
 		JsonElement elt = json.parse(body.trim());
 		JsonObject obj = elt.getAsJsonObject();
 		String bodyjson;
-		if (obj.get("payload") == null) {
+		if ((obj.get("payload") == null)|| nodecode) {
 			bodyjson = body;
 		} else {
 			bodyjson = obj.get("payload").getAsString();

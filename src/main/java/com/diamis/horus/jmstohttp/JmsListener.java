@@ -1,5 +1,6 @@
 package com.diamis.horus.jmstohttp;
 
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
@@ -22,6 +23,15 @@ import javax.jms.Message;
 import javax.jms.MessageConsumer;
 import javax.jms.Session;
 import javax.jms.TextMessage;
+
+import javax.net.ssl.KeyManagerFactory;
+import java.security.KeyStore;
+import java.security.Security;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManagerFactory;
+
 
 import com.diamis.horus.HorusException;
 import com.diamis.horus.HorusTracingCodec;
@@ -129,7 +139,8 @@ public class JmsListener {
 		HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, jmsQueue,
 				"Prefixes : " + extraProps.getOrDefault(JMSProducer.RFH_PREFIX, "rfh2-") + "/"
 						+ extraProps.getOrDefault(JMSProducer.MQMD_PREFIX, "mqmd-"));
-
+		HorusUtils.logJson(HorusUtils.PINK_BOX, "INFO", null, jmsQueue,
+				"SSL Parameters " + extraProps.get("sslProtocol") + " : " + extraProps.get("cipherSuite"));
 		parent.log("Start Connection to " + jmsQueue);
 		try {
 			factory = new MQConnectionFactory();
@@ -138,6 +149,9 @@ public class JmsListener {
 			factory.setQueueManager(jmsQmgr);
 			factory.setChannel(jmsChannel);
 			factory.setTransportType(1);
+			if(extraProps.get("cipherSuite") != null) {
+				factory.setSSLCipherSuite(extraProps.get("cipherSuite"));
+			}
 
 			// Dummy comment
 			connect = factory.createConnection(null, null);
@@ -149,6 +163,9 @@ public class JmsListener {
 		} catch (JMSException e) {
 			HorusUtils.logJson(HorusUtils.PINK_BOX, "FATAL", null, jmsQueue, "JMS Error: " + e.getMessage());
 			parent.log("Failed to connect to " + jmsQueue);
+			throw new HorusException("Unable to start JMS Connection", e);
+		} catch (Exception e) {
+			HorusUtils.logJson(HorusUtils.PINK_BOX, "FATAL", null, jmsQueue, "JMS Error: " + e.getMessage());
 			throw new HorusException("Unable to start JMS Connection", e);
 		} finally {
 			parent.finish();
@@ -489,6 +506,14 @@ public class JmsListener {
 			extraProps.put("tracerPort", props.getProperty("tracer.port"));
 			extraProps.put("rfhHttpHeaderPrefix", props.getProperty("rfh.http.header.prefix"));
 			extraProps.put("mqmdHttpHeaderPrefix", props.getProperty("mqmd.http.header.prefix"));
+			if (props.getProperty("ssl.cipher.suite") != null)
+				extraProps.put("cipherSuite", props.getProperty("ssl.cipher.suite"));
+
+			//extraProps.put("keyStorePath", props.getProperty("ssl.keystore.path"));
+			//extraProps.put("keyStorePassword", props.getProperty("ssl.keystore.password"));
+			//extraProps.put("keyStoreAlias", props.getProperty("ssl.keystore.alias"));
+			System.setProperty("javax.net.ssl.trustStore", props.getProperty("ssl.truststore.path"));
+			System.setProperty("javax.net.ssl.trustStorePassword", props.getProperty("ssl.truststore.password"));
 		} else {
 			jmsHost = args[0];
 			jmsPort = Integer.parseInt(args[1]);
